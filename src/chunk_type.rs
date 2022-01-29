@@ -9,18 +9,6 @@ pub struct ChunkType {
 }
 
 impl ChunkType {
-    pub fn checked_me_type(&self) -> Result<&Self, PngError> {
-        if self.is_critical() {
-            Err(PngError::ExpectNonCritical)
-        } else if self.is_public() {
-            Err(PngError::ExpectPrivate)
-        } else if !self.is_reserved_bit_valid() {
-            Err(PngError::ExpectReservedBit)
-        } else {
-            Ok(self)
-        }
-    }
-
     pub fn bytes(&self) -> [u8; 4] {
         self.bytes.clone()
     }
@@ -62,6 +50,18 @@ impl ChunkType {
         }
 
         Ok(ChunkType { bytes })
+    }
+
+    pub fn checked_me_type(&self) -> Result<(), PngError> {
+        if self.is_critical() {
+            Err(PngError::ExpectNonCritical)
+        } else if self.is_public() {
+            Err(PngError::ExpectPrivate)
+        } else if !self.is_reserved_bit_valid() {
+            Err(PngError::ExpectReservedBit)
+        } else {
+            Ok(())
+        }
     }
 }
 
@@ -187,5 +187,18 @@ mod tests {
         let bytes_2: ChunkType = FromStr::from_str("RuSt").unwrap();
         let _chunk_string = format!("{}", bytes_1);
         let _are_chunks_equal = bytes_1 == bytes_2;
+    }
+
+    #[test]
+    pub fn test_me_chunks() {
+        let valid_chunk = ChunkType::from_str("ruSt").unwrap();
+        let critical = ChunkType::from_str("RuSt").unwrap();
+        let private = ChunkType::from_str("rUSt").unwrap();
+        let reserved = ChunkType::from_str("rust").unwrap();
+
+        assert!(valid_chunk.checked_me_type().is_ok());
+        assert!(critical.checked_me_type().is_err());
+        assert!(private.checked_me_type().is_err());
+        assert!(reserved.checked_me_type().is_err());
     }
 }

@@ -24,6 +24,10 @@ pub enum PngME {
     Print {
         file: String,
     },
+    Scrub {
+        file: String,
+    },
+    Test,
 }
 
 impl PngME {

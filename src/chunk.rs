@@ -1,10 +1,20 @@
 use crate::chunk_type::ChunkType;
 use crate::png::PngError;
+use crate::px::Px;
 use crc::crc32;
+
 use std::fmt;
+use std::io::Write;
+use std::str::FromStr;
+
+use flate2::{Compress, Compression, FlushCompress};
 
 pub fn segment4(bytes: &[u8]) -> Result<[u8; 4], PngError> {
     bytes.try_into().map_err(|_| PngError::ShortSegment)
+}
+
+fn then_err(cond: bool, err: PngError) -> Result<(), PngError> {
+    return cond.then(|| Err(err)).unwrap_or_else(|| Ok(()));
 }
 
 #[derive(Debug)]
@@ -18,14 +28,55 @@ pub struct Chunk {
 impl Chunk {
     const INT_MAX: usize = 2147483648;
 
-    pub fn checked_me_chunk(&self) -> Result<&Self, PngError> {
-        self.chunk_type.checked_me_type()?;
-        Ok(self)
+    /// Basic implementation of IHDR chunk.
+    ///
+    /// * Color Type: 6
+    /// * Bit Depth: 16
+    /// * Interlace: 0
+    pub fn ihdr(width: u32, height: u32) -> Result<Self, PngError> {
+        then_err(width > Self::INT_MAX as u32, PngError::IHDRWidthOverflow)?;
+        then_err(height > Self::INT_MAX as u32, PngError::IHDRHeightOverflow)?;
+
+        Ok(Self::new(
+            ChunkType::from_str("IHDR")?,
+            width
+                .to_be_bytes()
+                .iter()
+                .chain(height.to_be_bytes().iter())
+                .chain([8, 6, 0, 0, 0].iter())
+                .copied()
+                .collect(),
+        ))
+    }
+
+    pub fn iend() -> Result<Self, PngError> {
+        Ok(Self::new(ChunkType::from_str("IEND")?, Vec::new()))
+    }
+
+    pub fn idat(data: &Vec<Vec<Px>>) -> Result<Self, PngError> {
+        let data: Vec<u8> = data
+            .iter()
+            .flat_map(|row| {
+                [0].into_iter()
+                    .chain(row.iter().flat_map(|px| px.as_bytes()))
+            })
+            .collect();
+
+        let mut buf = Vec::with_capacity(data.len());
+        let mut encoder = Compress::new(Compression::default(), true);
+
+        encoder
+            .compress_vec(&data, &mut buf, FlushCompress::Finish)
+            .unwrap();
+
+        Ok(Self::new(
+            ChunkType::from_str("IDAT")?,
+            buf, //deflate::deflate_bytes_zlib(data.as_slice()),
+        ))
     }
 
     pub fn new(chunk_type: ChunkType, data: Vec<u8>) -> Self {
-        let length = data.len();
-        if length > Self::INT_MAX {
+        if data.len() > Self::INT_MAX {
             panic!("Data length exceeds specified maximum of 2^31 bytes.");
         }
 
@@ -40,7 +91,7 @@ impl Chunk {
         );
 
         Self {
-            length: length as u32,
+            length: data.len() as u32,
             chunk_type,
             data,
             crc,
@@ -77,14 +128,17 @@ impl Chunk {
             .copied()
             .collect()
     }
+
+    pub fn checked_me_chunk(&self) -> Result<(), PngError> {
+        self.chunk_type.checked_me_type()?;
+        Ok(())
+    }
 }
 
 impl TryFrom<&[u8]> for Chunk {
     type Error = PngError;
     fn try_from(bytes: &[u8]) -> Result<Self, Self::Error> {
-        if bytes.len() < 12 {
-            return Err(PngError::ShortChunk);
-        }
+        then_err(bytes.len() < 12, PngError::ShortChunk)?;
 
         let crc_offset = bytes.len() - 4;
 
@@ -93,13 +147,11 @@ impl TryFrom<&[u8]> for Chunk {
         let crc = u32::from_be_bytes(segment4(&bytes[crc_offset..])?);
         let data = bytes[8..crc_offset].to_vec();
 
-        if data.len() != length as usize {
-            return Err(PngError::LengthMismatch);
-        }
-
-        if crc::crc32::checksum_ieee(&bytes[4..crc_offset]) != crc {
-            return Err(PngError::CRCMismatch);
-        }
+        then_err(data.len() != length as usize, PngError::LengthMismatch)?;
+        then_err(
+            crc::crc32::checksum_ieee(&bytes[4..crc_offset]) != crc,
+            PngError::CRCMismatch,
+        )?;
 
         Ok(Chunk {
             length,

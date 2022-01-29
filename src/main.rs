@@ -3,6 +3,7 @@ mod chunk;
 mod chunk_type;
 mod commands;
 mod png;
+mod px;
 
 use args::PngME::{self, *};
 use png::PngError;
@@ -43,6 +44,8 @@ fn exec(command: PngME) -> Result<(), PngError> {
             let content = commands::print(&file)?;
             println!("{}", content);
         }
+        Scrub { file } => commands::scrub(&file)?,
+        Test => commands::test()?,
     })
 }
 

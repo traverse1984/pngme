@@ -17,6 +17,8 @@ pub enum PngError {
     FileNotFound,
     FileNotRead,
     FileNotWritten,
+    IHDRWidthOverflow,
+    IHDRHeightOverflow,
 }
 
 #[derive(Debug)]
@@ -64,6 +66,10 @@ impl Png {
             .into_iter()
             .chain(self.chunks.iter().flat_map(|chunk| chunk.as_bytes()))
             .collect()
+    }
+
+    pub fn scrub(&mut self) {
+        self.chunks.retain(|chunk| chunk.chunk_type().is_critical());
     }
 }
 
