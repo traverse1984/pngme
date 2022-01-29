@@ -9,6 +9,18 @@ pub struct ChunkType {
 }
 
 impl ChunkType {
+    pub fn checked_me_type(&self) -> Result<&Self, PngError> {
+        if self.is_critical() {
+            Err(PngError::ExpectNonCritical)
+        } else if self.is_public() {
+            Err(PngError::ExpectPrivate)
+        } else if !self.is_reserved_bit_valid() {
+            Err(PngError::ExpectReservedBit)
+        } else {
+            Ok(self)
+        }
+    }
+
     pub fn bytes(&self) -> [u8; 4] {
         self.bytes.clone()
     }

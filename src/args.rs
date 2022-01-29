@@ -8,6 +8,8 @@ pub enum PngME {
         file: String,
         chunk_type: String,
         message: Vec<String>,
+        #[clap(short, long)]
+        unchecked: bool,
     },
     Decode {
         file: String,
@@ -16,6 +18,8 @@ pub enum PngME {
     Remove {
         file: String,
         chunk_type: String,
+        #[clap(short, long)]
+        unchecked: bool,
     },
     Print {
         file: String,

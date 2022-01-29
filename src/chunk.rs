@@ -18,6 +18,11 @@ pub struct Chunk {
 impl Chunk {
     const INT_MAX: usize = 2147483648;
 
+    pub fn checked_me_chunk(&self) -> Result<&Self, PngError> {
+        self.chunk_type.checked_me_type()?;
+        Ok(self)
+    }
+
     pub fn new(chunk_type: ChunkType, data: Vec<u8>) -> Self {
         let length = data.len();
         if length > Self::INT_MAX {
@@ -108,19 +113,19 @@ impl TryFrom<&[u8]> for Chunk {
 impl fmt::Display for Chunk {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let Self {
-            length,
-            chunk_type,
-            crc,
-            ..
+            length, chunk_type, ..
         } = self;
 
-        let message = self.data_as_string().unwrap_or(String::from("???"));
+        write!(f, "{} ({})", chunk_type, length)?;
 
-        write!(
-            f,
-            "Chunk [{}] {} (0x{:x}): {}",
-            chunk_type, length, crc, message
-        )
+        if let Ok(mut data) = self.data_as_string() {
+            if data.len() == 0 {
+                data.push_str("<empty>");
+            }
+            write!(f, ": {}", data)?;
+        }
+
+        Ok(())
     }
 }
 
