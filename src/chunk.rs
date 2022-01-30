@@ -1,6 +1,5 @@
 use crate::chunk_type::ChunkType;
 use crate::png::PngError;
-use crate::px::Px;
 use crc::crc32;
 
 use std::fmt;
@@ -26,7 +25,7 @@ pub struct Chunk {
 }
 
 impl Chunk {
-    const INT_MAX: usize = 2147483648;
+    pub const INT_MAX: usize = 2147483648;
 
     /// Basic implementation of IHDR chunk.
     ///
@@ -53,15 +52,7 @@ impl Chunk {
         Ok(Self::new(ChunkType::from_str("IEND")?, Vec::new()))
     }
 
-    pub fn idat(data: &Vec<Vec<Px>>) -> Result<Self, PngError> {
-        let data: Vec<u8> = data
-            .iter()
-            .flat_map(|row| {
-                [0].into_iter()
-                    .chain(row.iter().flat_map(|px| px.as_bytes()))
-            })
-            .collect();
-
+    pub fn idat(data: &[u8]) -> Result<Self, PngError> {
         let mut buf = Vec::with_capacity(data.len());
         let mut encoder = Compress::new(Compression::default(), true);
 
@@ -76,7 +67,7 @@ impl Chunk {
     }
 
     pub fn new(chunk_type: ChunkType, data: Vec<u8>) -> Self {
-        if data.len() > Self::INT_MAX {
+        if data.len() > Self::INT_MAX as usize {
             panic!("Data length exceeds specified maximum of 2^31 bytes.");
         }
 

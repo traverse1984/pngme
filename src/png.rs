@@ -19,6 +19,31 @@ pub enum PngError {
     FileNotWritten,
     IHDRWidthOverflow,
     IHDRHeightOverflow,
+    ZeroWidth,
+    ZeroHeight,
+    WidthOverflow,
+    HeightOverflow,
+    WidthMismatch,
+    DataLengthMismatch,
+    FilterLengthMismatch,
+    OutOfBoundsX,
+    OutOfBoundsY,
+}
+
+impl PngError {
+    #[deprecated]
+    pub fn then(cond: bool, err: PngError) -> Result<(), PngError> {
+        cond.then(|| Err(err)).unwrap_or_else(|| Ok(()))
+    }
+
+    // Feels weird, like round the wrong way
+    pub fn is(cond: bool, err: PngError) -> Result<(), PngError> {
+        cond.then(|| Err(err)).unwrap_or_else(|| Ok(()))
+    }
+
+    pub fn not(cond: bool, err: PngError) -> Result<(), PngError> {
+        Self::is(!cond, err)
+    }
 }
 
 #[derive(Debug)]

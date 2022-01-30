@@ -1,7 +1,7 @@
 use crate::chunk::{self, Chunk};
 use crate::chunk_type::ChunkType;
+use crate::img::{self, ImageData};
 use crate::png::{Png, PngError};
-use crate::px::Px;
 use rand::Rng;
 use std::fs;
 use std::io::{ErrorKind, Read, Write};
@@ -129,19 +129,38 @@ pub fn scrub(filename: &str) -> CodingResult {
 }
 
 pub fn test() -> CodingResult {
-    let mut redbox = Px::rect(50, 50, Px::hex(0xFFFFFF));
-    let red = Px::hex(0xFF0000);
+    let mut rect = ImageData::new_bg(500, 500, img::hex(0xDEDEDE)).unwrap();
     let mut rng = rand::thread_rng();
 
-    for _ in 0..10000 {
-        let y = rng.gen_range(0..50);
-        let x = rng.gen_range(0..50);
-        let col = rng.gen::<u32>();
-        redbox[y][x] = Px::hexa(col);
+    rect.slice(5..19, 10..39).fill(img::hex(0x0000C4));
+
+    for y in 0usize..10 {
+        for x in 0usize..20 {
+            if x == 0 && y == 0 {
+                continue;
+            }
+
+            rect.copy_filter((..25, ..50), (25 * x, 50 * y), |&px| {
+                let count = (y * 10 + x) as u32;
+                let [r, g, b, _] = (px + (count * 16) << count % 32).to_be_bytes();
+                img::rgba(r, g, b, 200 - count as u8)
+            });
+
+            //
+        }
     }
 
-    let head = Chunk::ihdr(50, 50)?;
-    let data = Chunk::idat(&redbox)?;
+    // for _ in 0..1000 {
+    //     let x = rng.gen_range(0..rect.width());
+    //     let y = rng.gen_range(0..rect.height());
+    //     let col = rng.gen::<u32>();
+    //     rect.slice(x..x + 15, y..y + 15).iter_mut().for_each(|px| {
+    //         *px = *px ^ col << 1;
+    //     });
+    // }
+
+    let head = Chunk::ihdr(500, 500)?;
+    let data = Chunk::idat(rect.to_bytes().as_slice())?;
     let end = Chunk::iend()?;
 
     let png = Png::from_chunks(vec![head, data, end]);

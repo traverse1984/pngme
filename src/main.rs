@@ -2,8 +2,9 @@ mod args;
 mod chunk;
 mod chunk_type;
 mod commands;
+mod image;
+mod img;
 mod png;
-mod px;
 
 use args::PngME::{self, *};
 use png::PngError;
