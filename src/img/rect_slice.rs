@@ -1,164 +1,5 @@
-use crate::chunk::{self, Chunk};
-use crate::png::Png;
-use crate::png::PngError::{self, *};
-use std::fmt;
-use std::mem;
-use std::ops::RangeBounds;
-
-pub fn rgba(r: u8, g: u8, b: u8, a: u8) -> u32 {
-    u32::from_be_bytes([r, g, b, a])
-}
-
-pub fn rgb(r: u8, g: u8, b: u8) -> u32 {
-    rgba(r, g, b, 255)
-}
-
-pub fn hex(val: u32) -> u32 {
-    let [r_, rg, gb, ba] = val.to_be_bytes();
-    if r_ > 0 {
-        rgba(r_, rg, gb, ba)
-    } else {
-        rgb(rg, gb, ba)
-    }
-}
-
-pub fn hexa(val: u32) -> u32 {
-    val
-}
-
-pub struct ImageData {
-    width: usize,
-    height: usize,
-    pub data: Vec<u32>,
-    filter: Vec<u8>,
-}
-
-impl ImageData {
-    pub fn len(&self) -> usize {
-        self.data.len()
-    }
-
-    pub fn width(&self) -> usize {
-        self.width
-    }
-
-    pub fn height(&self) -> usize {
-        self.height
-    }
-
-    pub fn new(width: usize, height: usize) -> Result<ImageData, PngError> {
-        Self::new_bg(width, height, 0)
-    }
-
-    pub fn new_bg(width: usize, height: usize, bg: u32) -> Result<ImageData, PngError> {
-        Self::checked_dimensions(width, height)?;
-        Ok(Self {
-            width,
-            height,
-            data: vec![bg; width * height],
-            filter: vec![0; height],
-        })
-    }
-
-    pub fn slice(
-        &mut self,
-        xx2: impl RangeBounds<usize>,
-        yy2: impl RangeBounds<usize>,
-    ) -> RectSlice<'_> {
-        let mut rect = RectSlice::new(self);
-        rect.slice(xx2, yy2);
-        rect
-    }
-
-    pub fn to_bytes(&self) -> Vec<u8> {
-        self.data
-            .chunks(self.width)
-            .map(|chunk| chunk.iter().flat_map(|px| px.to_be_bytes()))
-            .zip(self.filter.iter())
-            .flat_map(|(row, ft)| ft.to_be_bytes().into_iter().chain(row))
-            .collect()
-    }
-
-    fn checked_dimensions(width: usize, height: usize) -> Result<(), PngError> {
-        PngError::is(width == 0, ZeroWidth)?;
-        PngError::is(height == 0, ZeroHeight)?;
-        PngError::is(width > Chunk::INT_MAX, WidthOverflow)?;
-        PngError::is(height > Chunk::INT_MAX, HeightOverflow)
-    }
-
-    fn checked(
-        width: usize,
-        height: usize,
-        data: &Vec<u32>,
-        filter: &Vec<u8>,
-    ) -> Result<(), PngError> {
-        Self::checked_dimensions(width, height)?;
-        PngError::is(data.len() != width * height, DataLengthMismatch)?;
-        PngError::is(filter.len() != height, FilterLengthMismatch)
-    }
-
-    fn from_parts(
-        width: usize,
-        height: usize,
-        data: Vec<u32>,
-        filter: Vec<u8>,
-    ) -> Result<ImageData, PngError> {
-        Self::checked(width, height, &data, &filter)?;
-
-        Ok(Self {
-            width,
-            height,
-            data,
-            filter,
-        })
-    }
-
-    pub fn from_vec_2d(data: Vec<Vec<u32>>) -> Result<ImageData, PngError> {
-        let height = data.len();
-        let width = data.get(0).ok_or_else(|| ZeroWidth)?.len();
-
-        if data.iter().any(|row| row.len() != width) {
-            return Err(WidthMismatch);
-        }
-
-        Self::from_parts(
-            width,
-            height,
-            data.into_iter().flatten().collect(),
-            vec![0; height],
-        )
-    }
-
-    pub fn copy(
-        &mut self,
-        (xx2, yy2): (impl RangeBounds<usize>, impl RangeBounds<usize>),
-        (xto, yto): (usize, usize),
-    ) {
-        self.copy_filter((xx2, yy2), (xto, yto), |x| *x);
-        //let slice = self.slice(xx2, yy2).fill(0);
-    }
-
-    pub fn copy_filter(
-        &mut self,
-        (xx2, yy2): (impl RangeBounds<usize>, impl RangeBounds<usize>),
-        (xto, yto): (usize, usize),
-        filter: impl Fn(&u32) -> u32,
-    ) {
-        let (wmax, hmax) = (
-            usize::saturating_sub(self.width, xto),
-            usize::saturating_sub(self.height, yto),
-        );
-
-        let mut from_slice = self.slice(xx2, yy2);
-        from_slice.clamp(wmax, hmax);
-        let (width, height) = from_slice.dimensions();
-
-        let data = from_slice.iter().map(filter).collect();
-        let mut to = self.slice(xto..xto + width, yto..yto + height);
-
-        to.copy_from_vec(data);
-    }
-}
+use super::ImageData;
+use std::ops::{Bound, RangeBounds};
 
 pub struct RectSlice<'a> {
     img: &'a mut ImageData,
@@ -215,7 +56,7 @@ impl<'a> RectSlice<'a> {
         xx2: impl RangeBounds<usize>,
         yy2: impl RangeBounds<usize>,
     ) -> RectCoord {
-        use std::ops::Bound::{self, *};
+        use self::Bound::{Excluded, Included, Unbounded};
 
         let to_index = |bound: Bound<&usize>, auto: usize, max: usize| {
             let pixel = match bound {
@@ -226,7 +67,7 @@ impl<'a> RectSlice<'a> {
             usize::min(pixel, max)
         };
 
-        let (width, height) = (self.img.width - 1, self.img.height - 1);
+        let (width, height) = (self.img.width() - 1, self.img.height() - 1);
 
         let x = to_index(xx2.start_bound(), 0, width);
         let y = to_index(yy2.start_bound(), 0, height);
@@ -276,7 +117,7 @@ impl<'a> RectSlice<'a> {
 
     pub fn to_vec_2d(&self) -> Vec<Vec<u32>> {
         self.to_vec()
-            .chunks(self.img.width)
+            .chunks(self.img.width())
             .map(|row| Vec::from(row))
             .collect()
     }
@@ -295,8 +136,8 @@ impl SliceIndexIter {
     pub fn from_slice(slice: &RectSlice) -> Self {
         let (x, y, x2, y2) = slice.rect;
         Self {
-            width: slice.img.width,
-            offset: y * slice.img.width,
+            width: slice.img.width(),
+            offset: y * slice.img.width(),
             idx: x,
             x,
             x2,

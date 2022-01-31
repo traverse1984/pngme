@@ -1,5 +1,5 @@
-use crate::chunk;
-use crate::png::PngError;
+use super::chunk;
+use crate::err::*;
 use std::fmt;
 use std::str::FromStr;
 
@@ -39,26 +39,26 @@ impl ChunkType {
         self.is_reserved_bit_valid()
     }
 
-    pub fn from_bytes(bytes: &[u8]) -> Result<Self, PngError> {
+    pub fn from_bytes(bytes: &[u8]) -> PngRes<Self> {
         let bytes = chunk::segment4(&bytes)?;
 
         for byte in &bytes {
             match byte {
                 b'a'..=b'z' | b'A'..=b'Z' => continue,
-                _ => return Err(PngError::InvalidByte),
+                _ => return Err(PngErr::InvalidByte),
             }
         }
 
         Ok(ChunkType { bytes })
     }
 
-    pub fn checked_me_type(&self) -> Result<(), PngError> {
+    pub fn checked_me_type(&self) -> PngRes {
         if self.is_critical() {
-            Err(PngError::ExpectNonCritical)
+            Err(PngErr::ExpectNonCritical)
         } else if self.is_public() {
-            Err(PngError::ExpectPrivate)
+            Err(PngErr::ExpectPrivate)
         } else if !self.is_reserved_bit_valid() {
-            Err(PngError::ExpectReservedBit)
+            Err(PngErr::ExpectReservedBit)
         } else {
             Ok(())
         }
@@ -66,14 +66,14 @@ impl ChunkType {
 }
 
 impl FromStr for ChunkType {
-    type Err = PngError;
+    type Err = PngErr;
     fn from_str(chunk_str: &str) -> Result<Self, Self::Err> {
         Self::from_bytes(chunk_str.as_bytes())
     }
 }
 
 impl TryFrom<[u8; 4]> for ChunkType {
-    type Error = PngError;
+    type Error = PngErr;
     fn try_from(bytes: [u8; 4]) -> Result<Self, Self::Error> {
         Self::from_bytes(&bytes)
     }

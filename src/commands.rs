@@ -1,34 +1,28 @@
-use crate::chunk::{self, Chunk};
-use crate::chunk_type::ChunkType;
 use crate::img::{self, ImageData};
-use crate::png::{Png, PngError};
 use rand::Rng;
 use std::fs;
 use std::io::{ErrorKind, Read, Write};
 use std::str::FromStr;
 
-type CodingResult<T = ()> = Result<T, PngError>;
-
-use flate2::read::GzDecoder;
-use flate2::write::GzEncoder;
-use flate2::GzBuilder;
+use crate::err::*;
+use crate::png::{Chunk, ChunkType, Png};
 use flate2::{Decompress, FlushDecompress};
 
-fn read_png(filename: &str) -> Result<Png, PngError> {
+fn read_png(filename: &str) -> PngRes<Png> {
     match fs::read(filename) {
         Ok(buf) => Png::try_from(buf.as_slice()),
         Err(e) => Err(match e.kind() {
-            ErrorKind::NotFound => PngError::FileNotFound,
-            _ => PngError::FileNotRead,
+            ErrorKind::NotFound => PngErr::FileNotFound,
+            _ => PngErr::FileNotRead,
         }),
     }
 }
 
-fn write_png(filename: &str, png: Png) -> CodingResult {
-    fs::write(filename, png.as_bytes().as_slice()).map_err(|_| PngError::FileNotWritten)
+fn write_png(filename: &str, png: Png) -> PngRes {
+    fs::write(filename, png.as_bytes().as_slice()).map_err(|_| PngErr::FileNotWritten)
 }
 
-fn write_encode(filename: &str, chunk_type: &str, message: &str, checked: bool) -> CodingResult {
+fn write_encode(filename: &str, chunk_type: &str, message: &str, checked: bool) -> PngRes {
     let chunk = Chunk::new(
         ChunkType::from_str(chunk_type)?,
         message.as_bytes().to_vec(),
@@ -46,7 +40,7 @@ fn write_encode(filename: &str, chunk_type: &str, message: &str, checked: bool) 
     write_png(filename, png)
 }
 
-fn write_remove(filename: &str, chunk_type: &str, checked: bool) -> CodingResult {
+fn write_remove(filename: &str, chunk_type: &str, checked: bool) -> PngRes {
     if checked {
         ChunkType::from_str(chunk_type)?.checked_me_type()?;
     }
@@ -56,35 +50,35 @@ fn write_remove(filename: &str, chunk_type: &str, checked: bool) -> CodingResult
     write_png(filename, png)
 }
 
-pub fn encode(filename: &str, chunk_type: &str, message: &str) -> CodingResult {
+pub fn encode(filename: &str, chunk_type: &str, message: &str) -> PngRes {
     write_encode(filename, chunk_type, message, true)
 }
 
-pub fn encode_unchecked(filename: &str, chunk_type: &str, message: &str) -> CodingResult {
+pub fn encode_unchecked(filename: &str, chunk_type: &str, message: &str) -> PngRes {
     write_encode(filename, chunk_type, message, false)
 }
 
-pub fn decode(filename: &str, chunk_type: &str) -> CodingResult<String> {
+pub fn decode(filename: &str, chunk_type: &str) -> PngRes<String> {
     let png = read_png(filename)?;
     png.chunk_by_type(chunk_type).map_or_else(
-        || Err(PngError::ChunkNotFound),
+        || Err(PngErr::ChunkNotFound),
         |chunk| chunk.data_as_string(),
     )
 }
 
-pub fn remove(filename: &str, chunk_type: &str) -> CodingResult {
+pub fn remove(filename: &str, chunk_type: &str) -> PngRes {
     write_remove(filename, chunk_type, true)
 }
 
-pub fn remove_unchecked(filename: &str, chunk_type: &str) -> CodingResult {
+pub fn remove_unchecked(filename: &str, chunk_type: &str) -> PngRes {
     write_remove(filename, chunk_type, false)
 }
 
-pub fn print(filename: &str) -> CodingResult<String> {
+pub fn print(filename: &str) -> PngRes<String> {
     Ok(read_png(filename)?.to_string())
 }
 
-pub fn scrub(filename: &str) -> CodingResult {
+pub fn scrub(filename: &str) -> PngRes {
     // let mut png = read_png(filename)?;
     // png.scrub();
     // write_png(filename, png)?;
@@ -128,7 +122,7 @@ pub fn scrub(filename: &str) -> CodingResult {
     Ok(())
 }
 
-pub fn test() -> CodingResult {
+pub fn test() -> PngRes {
     let mut rect = ImageData::new_bg(500, 500, img::hex(0xDEDEDE)).unwrap();
     let mut rng = rand::thread_rng();
 

@@ -1,50 +1,6 @@
-use crate::chunk::{Chunk, ChunkIter};
+use super::chunk::{Chunk, ChunkIter};
+use crate::err::*;
 use std::fmt;
-
-#[derive(Debug)]
-pub enum PngError {
-    InvalidHeader,
-    InvalidByte,
-    ShortSegment,
-    ShortChunk,
-    ExpectNonCritical,
-    ExpectReservedBit,
-    ExpectPrivate,
-    LengthMismatch,
-    CRCMismatch,
-    NotUTF8,
-    ChunkNotFound,
-    FileNotFound,
-    FileNotRead,
-    FileNotWritten,
-    IHDRWidthOverflow,
-    IHDRHeightOverflow,
-    ZeroWidth,
-    ZeroHeight,
-    WidthOverflow,
-    HeightOverflow,
-    WidthMismatch,
-    DataLengthMismatch,
-    FilterLengthMismatch,
-    OutOfBoundsX,
-    OutOfBoundsY,
-}
-
-impl PngError {
-    #[deprecated]
-    pub fn then(cond: bool, err: PngError) -> Result<(), PngError> {
-        cond.then(|| Err(err)).unwrap_or_else(|| Ok(()))
-    }
-
-    // Feels weird, like round the wrong way
-    pub fn is(cond: bool, err: PngError) -> Result<(), PngError> {
-        cond.then(|| Err(err)).unwrap_or_else(|| Ok(()))
-    }
-
-    pub fn not(cond: bool, err: PngError) -> Result<(), PngError> {
-        Self::is(!cond, err)
-    }
-}
 
 #[derive(Debug)]
 pub struct Png {
@@ -62,12 +18,12 @@ impl Png {
         self.chunks.push(chunk)
     }
 
-    pub fn remove_chunk(&mut self, chunk_type: &str) -> Result<Chunk, PngError> {
+    pub fn remove_chunk(&mut self, chunk_type: &str) -> PngRes<Chunk> {
         self.chunks
             .iter()
             .position(|chunk| chunk.chunk_type().to_string() == chunk_type)
             .map_or_else(
-                || Err(PngError::ChunkNotFound),
+                || Err(PngErr::ChunkNotFound),
                 |pos| Ok(self.chunks.remove(pos)),
             )
     }
@@ -99,10 +55,10 @@ impl Png {
 }
 
 impl TryFrom<&[u8]> for Png {
-    type Error = PngError;
+    type Error = PngErr;
     fn try_from(bytes: &[u8]) -> Result<Self, Self::Error> {
         if bytes.len() < 8 || &bytes[0..8] != &Self::STANDARD_HEADER {
-            return Err(PngError::InvalidHeader);
+            return Err(PngErr::InvalidHeader);
         }
 
         Ok(Self {
@@ -123,8 +79,8 @@ impl fmt::Display for Png {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::chunk::Chunk;
-    use crate::chunk_type::ChunkType;
+    use crate::png::chunk::Chunk;
+    use crate::png::chunk_type::ChunkType;
     use std::convert::TryFrom;
     use std::str::FromStr;
 
@@ -143,7 +99,7 @@ mod tests {
         Png::from_chunks(chunks)
     }
 
-    fn chunk_from_strings(chunk_type: &str, data: &str) -> Result<Chunk, PngError> {
+    fn chunk_from_strings(chunk_type: &str, data: &str) -> PngRes<Chunk> {
         use std::str::FromStr;
 
         let chunk_type = ChunkType::from_str(chunk_type)?;

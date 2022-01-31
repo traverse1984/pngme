@@ -1,5 +1,5 @@
-use crate::chunk_type::ChunkType;
-use crate::png::PngError;
+use super::chunk_type::ChunkType;
+use crate::err::*;
 use crc::crc32;
 
 use std::fmt;
@@ -8,12 +8,8 @@ use std::str::FromStr;
 
 use flate2::{Compress, Compression, FlushCompress};
 
-pub fn segment4(bytes: &[u8]) -> Result<[u8; 4], PngError> {
-    bytes.try_into().map_err(|_| PngError::ShortSegment)
-}
-
-fn then_err(cond: bool, err: PngError) -> Result<(), PngError> {
-    return cond.then(|| Err(err)).unwrap_or_else(|| Ok(()));
+pub fn segment4(bytes: &[u8]) -> PngRes<[u8; 4]> {
+    bytes.try_into().map_err(|_| PngErr::ShortSegment)
 }
 
 #[derive(Debug)]
@@ -32,9 +28,9 @@ impl Chunk {
     /// * Color Type: 6
     /// * Bit Depth: 16
     /// * Interlace: 0
-    pub fn ihdr(width: u32, height: u32) -> Result<Self, PngError> {
-        then_err(width > Self::INT_MAX as u32, PngError::IHDRWidthOverflow)?;
-        then_err(height > Self::INT_MAX as u32, PngError::IHDRHeightOverflow)?;
+    pub fn ihdr(width: u32, height: u32) -> PngRes<Self> {
+        PngErr::not_or(width > Self::INT_MAX as u32, PngErr::IHDRWidthOverflow)?;
+        PngErr::not_or(height > Self::INT_MAX as u32, PngErr::IHDRHeightOverflow)?;
 
         Ok(Self::new(
             ChunkType::from_str("IHDR")?,
@@ -48,11 +44,11 @@ impl Chunk {
         ))
     }
 
-    pub fn iend() -> Result<Self, PngError> {
+    pub fn iend() -> PngRes<Self> {
         Ok(Self::new(ChunkType::from_str("IEND")?, Vec::new()))
     }
 
-    pub fn idat(data: &[u8]) -> Result<Self, PngError> {
+    pub fn idat(data: &[u8]) -> PngRes<Self> {
         let mut buf = Vec::with_capacity(data.len());
         let mut encoder = Compress::new(Compression::default(), true);
 
@@ -105,8 +101,8 @@ impl Chunk {
         self.crc
     }
 
-    pub fn data_as_string(&self) -> Result<String, PngError> {
-        String::from_utf8(self.data.to_vec()).map_err(|_| PngError::NotUTF8)
+    pub fn data_as_string(&self) -> PngRes<String> {
+        String::from_utf8(self.data.to_vec()).map_err(|_| PngErr::NotUTF8)
     }
 
     pub fn as_bytes(&self) -> Vec<u8> {
@@ -120,16 +116,16 @@ impl Chunk {
             .collect()
     }
 
-    pub fn checked_me_chunk(&self) -> Result<(), PngError> {
+    pub fn checked_me_chunk(&self) -> PngRes {
         self.chunk_type.checked_me_type()?;
         Ok(())
     }
 }
 
 impl TryFrom<&[u8]> for Chunk {
-    type Error = PngError;
+    type Error = PngErr;
     fn try_from(bytes: &[u8]) -> Result<Self, Self::Error> {
-        then_err(bytes.len() < 12, PngError::ShortChunk)?;
+        PngErr::not_or(bytes.len() < 12, PngErr::ShortChunk)?;
 
         let crc_offset = bytes.len() - 4;
 
@@ -138,10 +134,10 @@ impl TryFrom<&[u8]> for Chunk {
         let crc = u32::from_be_bytes(segment4(&bytes[crc_offset..])?);
         let data = bytes[8..crc_offset].to_vec();
 
-        then_err(data.len() != length as usize, PngError::LengthMismatch)?;
-        then_err(
+        PngErr::is_or(data.len() == length as usize, PngErr::LengthMismatch)?;
+        PngErr::is_or(
             crc::crc32::checksum_ieee(&bytes[4..crc_offset]) != crc,
-            PngError::CRCMismatch,
+            PngErr::CRCMismatch,
         )?;
 
         Ok(Chunk {
@@ -188,13 +184,13 @@ impl<'a> ChunkIter<'a> {
 }
 
 impl<'a> Iterator for ChunkIter<'a> {
-    type Item = Result<Chunk, PngError>;
-    fn next(&mut self) -> Option<Result<Chunk, PngError>> {
+    type Item = PngRes<Chunk>;
+    fn next(&mut self) -> Option<PngRes<Chunk>> {
         if self.tainted || self.cur.len() == 0 {
             return None;
         } else if self.cur.len() < 12 {
             self.tainted = true;
-            return Some(Err(PngError::ShortChunk));
+            return Some(Err(PngErr::ShortChunk));
         }
 
         let len = segment4(&self.cur[0..4]).unwrap();
@@ -202,7 +198,7 @@ impl<'a> Iterator for ChunkIter<'a> {
 
         if self.cur.len() < len {
             self.tainted = true;
-            return Some(Err(PngError::ShortChunk));
+            return Some(Err(PngErr::ShortChunk));
         }
 
         let chunk = &self.cur[0..len];
@@ -313,8 +309,8 @@ mod iter_tests {
 
 #[cfg(test)]
 mod tests {
+    use super::super::chunk_type::ChunkType;
     use super::*;
-    use crate::chunk_type::ChunkType;
     use std::str::FromStr;
 
     fn testing_chunk() -> Chunk {

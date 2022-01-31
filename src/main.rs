@@ -1,15 +1,14 @@
 mod args;
-mod chunk;
-mod chunk_type;
 mod commands;
-mod image;
+mod err;
 mod img;
 mod png;
 
 use args::PngME::{self, *};
-use png::PngError;
 
-fn exec(command: PngME) -> Result<(), PngError> {
+pub(crate) use err::*;
+
+fn exec(command: PngME) -> PngRes {
     Ok(match command {
         Encode {
             file,
@@ -50,6 +49,6 @@ fn exec(command: PngME) -> Result<(), PngError> {
     })
 }
 
-fn main() -> Result<(), PngError> {
+fn main() -> PngRes {
     exec(PngME::cmd())
 }
