@@ -1,5 +1,6 @@
 use super::chunk_type::ChunkType;
 use crate::err::*;
+use crate::INT_MAX;
 use crc::crc32;
 
 use std::fmt;
@@ -21,16 +22,14 @@ pub struct Chunk {
 }
 
 impl Chunk {
-    pub const INT_MAX: usize = 2147483648;
-
     /// Basic implementation of IHDR chunk.
     ///
     /// * Color Type: 6
     /// * Bit Depth: 16
     /// * Interlace: 0
     pub fn ihdr(width: u32, height: u32) -> PngRes<Self> {
-        PngErr::not_or(width > Self::INT_MAX as u32, PngErr::IHDRWidthOverflow)?;
-        PngErr::not_or(height > Self::INT_MAX as u32, PngErr::IHDRHeightOverflow)?;
+        PngErr::not_or(width > INT_MAX as u32, PngErr::IHDRWidthOverflow)?;
+        PngErr::not_or(height > INT_MAX as u32, PngErr::IHDRHeightOverflow)?;
 
         Ok(Self::new(
             ChunkType::from_str("IHDR")?,
@@ -63,7 +62,7 @@ impl Chunk {
     }
 
     pub fn new(chunk_type: ChunkType, data: Vec<u8>) -> Self {
-        if data.len() > Self::INT_MAX as usize {
+        if data.len() > INT_MAX as usize {
             panic!("Data length exceeds specified maximum of 2^31 bytes.");
         }
 

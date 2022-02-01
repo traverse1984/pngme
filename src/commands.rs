@@ -1,4 +1,4 @@
-use crate::img::{self, ImageData};
+use crate::img::{self, Image};
 use rand::Rng;
 use std::fs;
 use std::io::{ErrorKind, Read, Write};
@@ -123,7 +123,7 @@ pub fn scrub(filename: &str) -> PngRes {
 }
 
 pub fn test() -> PngRes {
-    let mut rect = ImageData::new_bg(500, 500, img::hex(0xDEDEDE)).unwrap();
+    let mut rect = Image::new_bg(500, 500, img::hex(0xDEDEDE)).unwrap();
     let mut rng = rand::thread_rng();
 
     rect.slice(5..19, 10..39).fill(img::hex(0x0000C4));
@@ -134,11 +134,11 @@ pub fn test() -> PngRes {
                 continue;
             }
 
-            rect.copy_filter((..25, ..50), (25 * x, 50 * y), |&px| {
-                let count = (y * 10 + x) as u32;
-                let [r, g, b, _] = (px + (count * 16) << count % 32).to_be_bytes();
-                img::rgba(r, g, b, 200 - count as u8)
-            });
+            // rect.copy_filter((..25, ..50), (25 * x, 50 * y), |&px| {
+            //     let count = (y * 10 + x) as u32;
+            //     let [r, g, b, _] = (px + (count * 16) << count % 32).to_be_bytes();
+            //     img::rgba(r, g, b, 200 - count as u8)
+            // });
 
             //
         }
@@ -153,13 +153,13 @@ pub fn test() -> PngRes {
     //     });
     // }
 
-    let head = Chunk::ihdr(500, 500)?;
-    let data = Chunk::idat(rect.to_bytes().as_slice())?;
-    let end = Chunk::iend()?;
+    // let head = Chunk::ihdr(500, 500)?;
+    // let data = Chunk::idat(rect.to_bytes().as_slice())?;
+    // let end = Chunk::iend()?;
 
-    let png = Png::from_chunks(vec![head, data, end]);
+    // let png = Png::from_chunks(vec![head, data, end]);
 
-    write_png("test.png", png)?;
+    //write_png("test.png", png)?;
 
     Ok(())
 }

@@ -8,6 +8,8 @@ use args::PngME::{self, *};
 
 pub(crate) use err::*;
 
+pub const INT_MAX: u32 = 2147483648;
+
 fn exec(command: PngME) -> PngRes {
     Ok(match command {
         Encode {

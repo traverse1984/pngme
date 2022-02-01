@@ -1,93 +1,42 @@
-use super::ImageData;
+use super::image::Image;
+use super::image_data::*;
+use super::rect::Rect;
+use crate::png;
 use std::ops::{Bound, RangeBounds};
 
 pub struct RectSlice<'a> {
-    img: &'a mut ImageData,
-    rect: RectCoord,
+    img: &'a mut Image,
+    rect: Rect,
 }
 
-type RectCoord = (usize, usize, usize, usize);
+impl<'a> Quad for RectSlice<'a> {
+    fn width(&self) -> u32 {
+        self.rect.width()
+    }
+
+    fn height(&self) -> u32 {
+        self.rect.height()
+    }
+}
+
+//impl<'a> ImageData for RectSlice<'a> {}
 
 impl<'a> RectSlice<'a> {
-    pub fn width(&self) -> usize {
-        let (x, _, x2, _) = self.rect;
-        x2 - x + 1
-    }
-
-    pub fn height(&self) -> usize {
-        let (_, y, _, y2) = self.rect;
-        y2 - y + 1
-    }
-
-    pub fn dimensions(&self) -> (usize, usize) {
-        (self.width(), self.height())
-    }
-
-    pub fn clamp(&mut self, width: usize, height: usize) -> &mut Self {
-        let wdiff = usize::saturating_sub(self.width(), width);
-        let hdiff = usize::saturating_sub(self.height(), height);
-
-        if wdiff > 0 {
-            let (x, _, x2, _) = &mut self.rect;
-            *x2 = usize::max(*x, usize::saturating_sub(*x2, wdiff));
-        }
-
-        if hdiff > 0 {
-            let (_, y, _, y2) = &mut self.rect;
-            *y2 = usize::max(*y, usize::saturating_sub(*y2, hdiff));
-        }
-
+    pub fn clamp(&mut self, width: u32, height: u32) -> &mut Self {
+        self.rect.constrain(width, height);
         self
     }
 
-    pub fn rect(&self) -> RectCoord {
-        self.rect
+    pub fn rect(&self) -> &Rect {
+        &self.rect
     }
 
-    pub fn new(img: &'a mut ImageData) -> Self {
-        Self {
-            img,
-            rect: (0, 0, 0, 0),
-        }
+    pub fn new(img: &'a mut Image, rect: Rect) -> Self {
+        Self { img, rect }
     }
 
-    fn range_to_rect(
-        &self,
-        xx2: impl RangeBounds<usize>,
-        yy2: impl RangeBounds<usize>,
-    ) -> RectCoord {
-        use self::Bound::{Excluded, Included, Unbounded};
-
-        let to_index = |bound: Bound<&usize>, auto: usize, max: usize| {
-            let pixel = match bound {
-                Included(x) => *x,
-                Excluded(x) => usize::saturating_sub(*x, 1),
-                Unbounded => auto,
-            };
-            usize::min(pixel, max)
-        };
-
-        let (width, height) = (self.img.width() - 1, self.img.height() - 1);
-
-        let x = to_index(xx2.start_bound(), 0, width);
-        let y = to_index(yy2.start_bound(), 0, height);
-        let x2 = to_index(xx2.end_bound(), width, width);
-        let y2 = to_index(yy2.end_bound(), height, height);
-
-        (
-            usize::min(x, x2),
-            usize::min(y, y2),
-            usize::max(x, x2),
-            usize::max(y, y2),
-        )
-    }
-
-    pub fn slice(
-        &mut self,
-        xx2: impl RangeBounds<usize>,
-        yy2: impl RangeBounds<usize>,
-    ) -> &mut Self {
-        self.rect = self.range_to_rect(xx2, yy2);
+    pub fn slice(&mut self, xx2: impl RangeBounds<u32>, yy2: impl RangeBounds<u32>) -> &mut Self {
+        self.rect = Rect::from_range(xx2, yy2);
         self
     }
 
@@ -117,31 +66,28 @@ impl<'a> RectSlice<'a> {
 
     pub fn to_vec_2d(&self) -> Vec<Vec<u32>> {
         self.to_vec()
-            .chunks(self.img.width())
+            .chunks(png::expect_usize(self.img.width()))
             .map(|row| Vec::from(row))
             .collect()
     }
 }
 
 struct SliceIndexIter {
-    width: usize,
+    rect: Rect,
     offset: usize,
     idx: usize,
-    x: usize,
-    x2: usize,
-    y2: usize,
 }
 
 impl SliceIndexIter {
-    pub fn from_slice(slice: &RectSlice) -> Self {
-        let (x, y, x2, y2) = slice.rect;
+    pub fn from_slice(rect: &Rect) -> Self {
+        let offset =
+            usize::checked_mul(png::expect_usize(rect.y()), png::expect_usize(rect.width()))
+                .expect("Rect was not within bounds.");
+
         Self {
-            width: slice.img.width(),
-            offset: y * slice.img.width(),
-            idx: x,
-            x,
-            x2,
-            y2,
+            offset,
+            rect: *rect,
+            idx: png::expect_usize(rect.x()),
         }
     }
 }
@@ -149,17 +95,18 @@ impl SliceIndexIter {
 impl Iterator for SliceIndexIter {
     type Item = usize;
     fn next(&mut self) -> Option<Self::Item> {
-        if self.idx > self.x2 {
-            self.offset += self.width;
-            if self.offset / self.width > self.y2 {
-                return None;
-            }
-            self.idx = self.x;
-        }
+        // if self.idx > self.x2 {
+        //     self.offset += self.width;
+        //     if self.offset / self.width > self.y2 {
+        //         return None;
+        //     }
+        //     self.idx = self.x;
+        // }
 
-        let index = self.offset + self.idx;
-        self.idx += 1;
-        Some(index)
+        // let index = self.offset + self.idx;
+        // self.idx += 1;
+        // Some(index)
+        None
     }
 }
 
@@ -172,7 +119,7 @@ impl<'a, 'b> SliceIter<'a, 'b> {
     pub fn new(slice: &'b RectSlice<'a>) -> Self {
         Self {
             slice,
-            idx: SliceIndexIter::from_slice(slice).into_iter(),
+            idx: SliceIndexIter::from_slice(slice.rect()).into_iter(),
         }
     }
 }
@@ -182,7 +129,7 @@ impl<'a, 'b> Iterator for SliceIter<'a, 'b> {
     fn next(&mut self) -> Option<Self::Item> {
         self.idx
             .next()
-            .map_or(None, |idx| self.slice.img.data.get(idx))
+            .map_or(None, |idx| self.slice.img.data().get(idx))
     }
 }
 
@@ -193,7 +140,7 @@ pub struct RectSliceIterMut<'a, 'b> {
 
 impl<'a, 'b> RectSliceIterMut<'a, 'b> {
     pub fn new(slice: &'b mut RectSlice<'a>) -> Self {
-        let idx = SliceIndexIter::from_slice(slice).into_iter();
+        let idx = SliceIndexIter::from_slice(slice.rect()).into_iter();
         Self { slice, idx }
     }
 }
@@ -204,7 +151,7 @@ impl<'a, 'b> Iterator for RectSliceIterMut<'a, 'b> {
         self.idx.next().map_or(None, |idx| {
             self.slice
                 .img
-                .data
+                .data_mut()
                 .get_mut(idx)
                 .map(|px| unsafe { &mut *(px as *mut u32) })
         })

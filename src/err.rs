@@ -29,6 +29,9 @@ pub enum PngErr {
     FilterLengthMismatch,
     OutOfBoundsX,
     OutOfBoundsY,
+    IntOverflow,
+    XOverflow,
+    YOverflow,
 }
 
 impl PngErr {
