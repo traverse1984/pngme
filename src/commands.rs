@@ -1,8 +1,10 @@
-use crate::img::{self, Image};
+use crate::img::{self, Img};
 use rand::Rng;
 use std::fs;
 use std::io::{ErrorKind, Read, Write};
 use std::str::FromStr;
+
+use crate::{col, Color};
 
 use crate::err::*;
 use crate::png::{Chunk, ChunkType, Png};
@@ -123,10 +125,10 @@ pub fn scrub(filename: &str) -> PngRes {
 }
 
 pub fn test() -> PngRes {
-    let mut rect = Image::new_bg(500, 500, img::hex(0xDEDEDE)).unwrap();
+    let mut rect = Img::new_bg(500, 500, col!(0xDEDEDE));
     let mut rng = rand::thread_rng();
 
-    rect.slice(5..19, 10..39).fill(img::hex(0x0000C4));
+    rect.slice(5..19, 10..39)?.fill(col!(0x0000C4));
 
     for y in 0usize..10 {
         for x in 0usize..20 {

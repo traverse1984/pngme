@@ -4,6 +4,7 @@ pub type PngRes<T = ()> = Result<T, PngErr>;
 
 #[derive(Debug)]
 pub enum PngErr {
+    DivisionByZero,
     InvalidHeader,
     InvalidByte,
     ShortSegment,
@@ -32,6 +33,7 @@ pub enum PngErr {
     IntOverflow,
     XOverflow,
     YOverflow,
+    ZeroAreaRect,
 }
 
 impl PngErr {

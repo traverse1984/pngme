@@ -1,101 +1,77 @@
-use super::image_data::Quad;
-use crate::err::*;
-use crate::png;
+use crate::calc;
+use crate::Quad;
 use crate::INT_MAX;
 use std::ops::{Bound, RangeBounds};
 
+type Coord = (u32, u32);
+
 #[derive(Debug, Copy, Clone)]
-pub struct Rect(u32, u32, u32, u32);
+pub struct Rect(Coord, Coord);
 
 impl Quad for Rect {
     fn width(&self) -> u32 {
-        self.2
+        calc!((self.x2()) - (self.x()))
     }
 
     fn height(&self) -> u32 {
-        self.3
+        calc!((self.y2()) - (self.y()))
     }
 }
 
 impl Rect {
     pub fn x(&self) -> u32 {
-        self.0
+        self.0 .0
     }
 
     pub fn y(&self) -> u32 {
-        self.1
+        self.0 .1
     }
 
-    pub fn expect_bounded_area(width: u32, height: u32) {
-        if png::area(width, height).is_err() {
-            panic!(
-                "Area of rect {}x{} is too large to be handled by this system.",
-                width, height
-            );
-        }
+    pub fn x2(&self) -> u32 {
+        self.1 .0
     }
 
-    pub fn expect_bounded_pos(x: u32, y: u32) {
-        if Self::pos_bounded(x, y).is_err() {
-            panic!("Rect co-ords ({},{}) are out of bounds.", x, y);
-        }
+    pub fn y2(&self) -> u32 {
+        self.1 .1
     }
 
-    fn new(x: u32, y: u32, width: u32, height: u32) -> Self {
-        Self::expect_bounded_pos(x, y);
+    fn new(xy: Coord, xy2: Coord) -> Self {
+        let (x, y) = (xy.0.min(INT_MAX), xy.0.min(INT_MAX));
+        let (x2, y2) = (xy2.0.min(INT_MAX), xy2.1.min(INT_MAX));
 
-        let mut rect = Self(x, y, width, height);
-
-        Self::expect_bounded_area(width, height);
-
-        // Need to add overflow feature
-        rect
+        Self((x.min(x2), y.min(y2)), (x.max(x2), y.max(y2)))
     }
 
-    pub fn constrain(&mut self, max_width: u32, max_height: u32) {
-        let Rect(.., width, height) = self;
+    fn from_dimensions(xy: Coord, width: u32, height: u32) -> Self {
+        let (x, y) = xy;
+        let x2 = calc!(width + x).min(INT_MAX);
+        let y2 = calc!(height + y).min(INT_MAX);
 
-        *width = png::clamp_u32(u32::min(*width, max_width));
-        *height = png::clamp_u32(u32::min(*height, max_height));
+        Rect((x, y), (x2, y2))
     }
 
-    pub fn pos_bounded(x: u32, y: u32) -> PngRes {
-        PngErr::not_or(x > INT_MAX, PngErr::XOverflow)?;
-        PngErr::not_or(y > INT_MAX, PngErr::YOverflow)
-    }
-
-    pub fn dimensions_bounded(width: u32, height: u32) -> PngRes {
-        PngErr::not_or(width == 0, PngErr::ZeroWidth)?;
-        PngErr::not_or(height == 0, PngErr::ZeroHeight)?;
-        Self::pos_bounded(width, height)?;
-        png::area(width, height)?;
-        Ok(())
-    }
-
-    pub fn from_range(xx2: impl RangeBounds<u32>, yy2: impl RangeBounds<u32>) -> Self {
+    pub fn from_range(xx2: impl RangeBounds<u32>, yy2: impl RangeBounds<u32>) -> Rect {
         use self::Bound::{Excluded, Included, Unbounded};
 
-        let point = |bound: Bound<&u32>, auto: u32| match bound {
+        let point = |bound: Bound<&u32>, default: u32| match bound {
             Included(x) => *x,
-            Excluded(x) => u32::saturating_sub(*x, 1),
-            Unbounded => auto,
+            Excluded(x) => calc!(*x - 1),
+            Unbounded => default,
         };
 
-        let x = point(xx2.start_bound(), 0); // 1..11 -> x=1, 10
+        let x = point(xx2.start_bound(), 0);
         let y = point(yy2.start_bound(), 0);
         let x2 = point(xx2.end_bound(), INT_MAX);
         let y2 = point(yy2.end_bound(), INT_MAX);
 
-        let (x, x2) = (u32::min(x, x2), u32::max(x, x2));
-        let (y, y2) = (u32::min(y, y2), u32::max(y, y2));
-
-        Self::new(x, y, x2 - x, y2 - y)
+        Rect((x.min(x2), y.min(y2)), (x.max(x2), y.max(y2)))
     }
-}
 
-impl From<(u32, u32, u32, u32)> for Rect {
-    fn from((x, y, width, height): (u32, u32, u32, u32)) -> Self {
-        Self::new(x, y, width, height)
+    pub fn constrain(&self, width: u32, height: u32) -> Self {
+        Rect(
+            (width.min(self.x()), height.min(self.y())),
+            (width.min(self.x2()), height.min(self.y2())),
+        )
     }
 }
 
@@ -105,11 +81,25 @@ mod tests {
 
     #[test]
     fn rect() {
-        let one = Rect::new(0, 0, 100, 100);
+        let bounded = Rect::new((0, 0), (100, 100));
+        assert_eq!(bounded.width(), 100);
+        assert_eq!(bounded.height(), 100);
+        assert_eq!(bounded.area().unwrap(), 10000);
 
-        assert_eq!(one.width(), 100);
-        assert_eq!(one.height(), 100);
-        assert_eq!(one.area().unwrap(), 10000);
+        let inverted = Rect::new((100, 100), (50, 50));
+        assert_eq!(inverted.width(), 0);
+        assert_eq!(inverted.height(), 0);
+    }
+
+    #[test]
+    fn from_dimensions() {
+        let rect = Rect::from_dimensions((100, 100), 200, 200);
+        assert_eq!(rect.width(), 200);
+        assert_eq!(rect.height(), 200);
+        assert_eq!(rect.x(), 100);
+        assert_eq!(rect.y(), 100);
+        assert_eq!(rect.x2(), 300);
+        assert_eq!(rect.y2(), 300);
     }
 
     #[test]
@@ -129,5 +119,30 @@ mod tests {
         let right_ub = Rect::from_range(10.., 10..);
         assert_eq!(right_ub.width(), INT_MAX - 10);
         assert_eq!(right_ub.height(), INT_MAX - 10);
+
+        let reversed = Rect::from_range(100..=0, 100..=0);
+        assert_eq!(reversed.width(), 100);
+        assert_eq!(reversed.height(), 100);
+        assert_eq!(reversed.x(), 0);
+        assert_eq!(reversed.y(), 0);
+    }
+
+    #[test]
+    fn from_range_outer_limit() {
+        let origin = Rect::from_range(0.., 0..).constrain(500, 500);
+        assert_eq!(origin.width(), 500);
+        assert_eq!(origin.height(), 500);
+
+        let offset = Rect::from_range(100.., 100..).constrain(500, 500);
+        assert_eq!(offset.width(), 400);
+        assert_eq!(offset.height(), 400);
+
+        let uneven = Rect::new((100, 400), (200, 600)).constrain(500, 500);
+        assert_eq!(uneven.width(), 100);
+        assert_eq!(uneven.height(), 100);
+
+        let unbounded = Rect::new((100, 600), (700, 800)).constrain(500, 500);
+        assert_eq!(unbounded.width(), 400);
+        assert_eq!(unbounded.height(), 0);
     }
 }

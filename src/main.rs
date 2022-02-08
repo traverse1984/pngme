@@ -4,9 +4,15 @@ mod err;
 mod img;
 mod png;
 
+mod traits;
+
+#[macro_use]
+mod macros;
+
 use args::PngME::{self, *};
 
 pub(crate) use err::*;
+pub(crate) use traits::*;
 
 pub const INT_MAX: u32 = 2147483648;
 
@@ -52,5 +58,9 @@ fn exec(command: PngME) -> PngRes {
 }
 
 fn main() -> PngRes {
-    exec(PngME::cmd())
+    let hi = 3;
+    let lo = 4;
+
+    Ok(())
+    //exec(PngME::cmd())
 }
