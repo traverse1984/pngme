@@ -1,4 +1,4 @@
-use crate::{calc, convert, err::*};
+use crate::{area, calc, convert, err::*};
 
 pub trait Color: Sized {
     fn _color_value(&self) -> Self;
@@ -18,10 +18,8 @@ pub trait Quad {
         (self.width(), self.height())
     }
 
-    fn area(&self) -> PngRes<usize> {
-        Ok(calc!(
-            convert!(usize; self.width())? * convert!(usize; self.height())?
-        ))
+    fn area(&self) -> usize {
+        area!(self.width(), self.height())
     }
 }
 

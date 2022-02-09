@@ -1,4 +1,5 @@
 use crate::img::{self, Img};
+use crate::{Image, Quad};
 use rand::Rng;
 use std::fs;
 use std::io::{ErrorKind, Read, Write};
@@ -95,23 +96,6 @@ pub fn scrub(filename: &str) -> PngRes {
         }
     }
 
-    // let f = std::fs::File::create("test.gz").unwrap();
-    // GzBuilder::new()
-    //     .filename("test.gz")
-    //     .write(f, flate2::Compression::default())
-    //     .finish()
-    //     .unwrap();
-
-    // let f = fs::File::create("test.gz").unwrap();
-    // let mut enc = GzBuilder::new()
-    //     .filename("test.gz")
-    //     .write(f, flate2::Compression::default());
-
-    // enc.write(b"Hello there world, how are you doing?").unwrap();
-    // enc.finish().unwrap();
-
-    // let r = std::fs::read("test.gz").unwrap();
-
     let mut vect = Vec::with_capacity(buf.len() * 10);
     let mut decoder = Decompress::new(true);
 
@@ -125,43 +109,36 @@ pub fn scrub(filename: &str) -> PngRes {
 }
 
 pub fn test() -> PngRes {
-    let mut rect = Img::new_bg(500, 500, col!(0xDEDEDE));
-    let mut rng = rand::thread_rng();
+    let mut rect = Img::new_bg(1250, 1250, col!(0x000000));
+    let mut slice = rect.slice(0..=10, 0..=10);
 
-    rect.slice(5..19, 10..39)?.fill(col!(0x0000C4));
+    let colr = Box::into_raw(Box::new(0x000000u32));
 
-    for y in 0usize..10 {
-        for x in 0usize..20 {
-            if x == 0 && y == 0 {
-                continue;
+    for w in 0..5 {
+        for x in 0..5 {
+            for y in 0..25 {
+                for z in 0..25 {
+                    slice
+                        .pos(
+                            x as u32 * 250 + z as u32 * 10,
+                            w as u32 * 250 + y as u32 * 10,
+                        )
+                        .fill(unsafe {
+                            *colr = col!(((1 + x) * (1 + w)) * 10, (y + 1) * 10, (z + 1) * 10);
+                            *colr
+                        });
+                }
             }
-
-            // rect.copy_filter((..25, ..50), (25 * x, 50 * y), |&px| {
-            //     let count = (y * 10 + x) as u32;
-            //     let [r, g, b, _] = (px + (count * 16) << count % 32).to_be_bytes();
-            //     img::rgba(r, g, b, 200 - count as u8)
-            // });
-
-            //
         }
     }
 
-    // for _ in 0..1000 {
-    //     let x = rng.gen_range(0..rect.width());
-    //     let y = rng.gen_range(0..rect.height());
-    //     let col = rng.gen::<u32>();
-    //     rect.slice(x..x + 15, y..y + 15).iter_mut().for_each(|px| {
-    //         *px = *px ^ col << 1;
-    //     });
-    // }
+    let head = Chunk::ihdr(1250, 1250)?;
+    let data = Chunk::idat(rect.to_bytes().as_slice())?;
+    let end = Chunk::iend()?;
 
-    // let head = Chunk::ihdr(500, 500)?;
-    // let data = Chunk::idat(rect.to_bytes().as_slice())?;
-    // let end = Chunk::iend()?;
+    let png = Png::from_chunks(vec![head, data, end]);
 
-    // let png = Png::from_chunks(vec![head, data, end]);
-
-    //write_png("test.png", png)?;
+    write_png("test.png", png)?;
 
     Ok(())
 }

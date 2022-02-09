@@ -24,25 +24,29 @@ macro_rules! calc {
 }
 
 /// Convert number type to another using try_into(), and map the error to
-/// PngErr::IntOverflow on failure. The second argument can be a calc!
-/// computation, but this is executed first and then converted.
+/// PngErr::IntOverflow on failure. If multiple values are provided, then
+/// a tuple of that length is output. If ex is put, then the program will
+/// panic if the number could not be converted.
 ///
 /// @example
-/// convert!(usize; 1000u32).unwrap(); // 1000usize
-///
-/// @example
-/// convert!(u16; 200u8 + 100).unwrap(); // 255u16
-///
-/// @example
-/// convert!(expect u8; 256); // Panics
+/// let x = convert!(u32; 10i32); // PngRes<u32>
+/// let y = convert!(ex u8; 256); // Panic
+/// let tuplea = convert!(u8; 10, 20, 30); // PngRes<(u8, u8, u8)>
+/// let tupleb = convert!(ex u8; 40, 50, 60); // (u8, u8, u8)
 #[macro_export]
 macro_rules! convert {
-    ($type: ty; $($tail: tt)+) => {{
-        calc!($($tail)+).try_into().map_err(|_| PngErr::IntOverflow) as PngRes<$type>
+    ($type: ty; $val: expr) => {{
+        $val.try_into().map_err(|_| PngErr::IntOverflow) as PngRes<$type>
     }};
-    (ex $type: ty; $($tail: tt)+) => {{
-        convert!($type; $($tail)+).expect("Could not convert number type.")
+    ($type: ty; $($val: expr),+) => {{
+        (|| -> PngRes<_> { Ok(($(convert!($type; $val)?),+)) })()
     }};
+    (ex $type: ty; $val: expr) => {{
+        convert!($type; $val).expect("Could not convert number type.")
+    }};
+    (ex $type: ty; $($val: expr),+) => {
+        ($(convert!(ex $type; $val)),+)
+    };
 }
 
 #[macro_export]
@@ -107,10 +111,10 @@ mod tests {
         assert!(convert!(u8; 256u16).is_err());
         assert!(convert!(u8; -1i8).is_err());
 
-        assert_eq!(convert!(u16; 10u8 + 20 * 5 - 30 * 2 - 239).unwrap(), 1u16);
-        assert_eq!(convert!(u16; 100u8 * 2 + 100 - 254).unwrap(), 1u16);
-        assert_eq!(convert!(u16; 50u8 - 51).unwrap(), 0u16);
+        assert_eq!(convert!(u8; 1, 2, 3).unwrap(), (1u8, 2u8, 3u8));
+        assert!(convert!(u8; 1, 2, 256).is_err());
 
-        assert!(panic::catch_unwind(|| convert!(ex u8; 256)).is_err())
+        assert!(panic::catch_unwind(|| convert!(ex u8; 256)).is_err());
+        assert!(panic::catch_unwind(|| convert!(ex u8; 1, 2, 256)).is_err());
     }
 }

@@ -24,12 +24,16 @@ impl Image for RectSlice<'_> {
     }
 
     fn clone_to_vec(&self) -> Vec<u32> {
-        Indexer::from_slice(self.rect())
-            .into_iter()
-            .map(|idx| self.img.data().get(idx).unwrap())
-            .copied()
-            .collect()
+        self.iter().copied().collect()
     }
+
+    // fn clone_to_vec(&self) -> Vec<u32> {
+    //     Indexer::from_slice(self.rect(), self.img.width())
+    //         .into_iter()
+    //         .map(|idx| self.img.data().get(idx).unwrap())
+    //         .copied()
+    //         .collect()
+    // }
 }
 
 impl<'a> RectSlice<'a> {
@@ -41,22 +45,30 @@ impl<'a> RectSlice<'a> {
         &self.rect
     }
 
-    fn reslice(
-        &mut self,
-        xx2: impl RangeBounds<u32>,
-        yy2: impl RangeBounds<u32>,
-    ) -> PngRes<&mut Self> {
-        self.rect = Rect::from_range(xx2, yy2).constrain(self.img.width(), self.img.height());
-        Ok(self)
+    fn set_rect(&mut self, rect: Rect) -> &mut Self {
+        self.rect = rect.constrain(self.img.width(), self.img.height());
+        self
     }
 
-    pub fn clamp(&mut self, width: u32, height: u32) -> &mut Self {
-        //self.rect.constrain(width, height);
-        self
+    pub fn reslice(&mut self, xx2: impl RangeBounds<u32>, yy2: impl RangeBounds<u32>) -> &mut Self {
+        self.set_rect(Rect::from_range(xx2, yy2))
+    }
+
+    pub fn xywh(&mut self, xy: (u32, u32), width: u32, height: u32) -> &mut Self {
+        self.set_rect(Rect::from_dimensions(xy, width, height))
+    }
+
+    pub fn pos(&mut self, x: u32, y: u32) -> &mut Self {
+        self.set_rect(self.rect.pos(x, y))
     }
 
     pub fn fill(&mut self, col: u32) -> &mut Self {
         self.iter_mut().for_each(|px| *px = col);
+        self
+    }
+
+    pub fn clear(&mut self) -> &mut Self {
+        self.iter_mut().for_each(|px| *px = 0);
         self
     }
 
@@ -65,6 +77,27 @@ impl<'a> RectSlice<'a> {
             .zip(data.iter())
             .for_each(|(curr, new)| *curr = *new);
         self
+    }
+
+    pub fn copy_each(&mut self, x: u32, y: u32, filter: impl Fn(&u32) -> u32) -> &mut Self {
+        let from = self.rect;
+        let to = self
+            .rect
+            .pos(x, y)
+            .constrain(self.img.width(), self.img.height());
+
+        if from.area() > to.area() {
+            self.rect = self.rect.constrain(to.width(), to.height());
+        }
+
+        let data: Vec<u32> = self.clone_to_vec().iter().map(|px| filter(px)).collect();
+        self.pos(x, y).copy_from(data.as_slice());
+        self.rect = from;
+        self
+    }
+
+    pub fn copy(&mut self, x: u32, y: u32) -> &mut Self {
+        self.copy_each(x, y, |px| *px)
     }
 
     pub fn to_img(self) -> Img {
@@ -80,47 +113,6 @@ impl<'a> RectSlice<'a> {
     }
 }
 
-struct Indexer {
-    rect: Rect,
-    offset: usize,
-    idx: usize,
-}
-
-impl Indexer {
-    pub fn from_slice(rect: &Rect) -> Self {
-        let (y, width) = (
-            convert!(ex usize; rect.y()),
-            convert!(ex usize; rect.width()),
-        );
-
-        let offset = calc!(y * width);
-
-        Self {
-            offset: calc!(y * width),
-            rect: *rect,
-            idx: convert!(ex usize; rect.x()),
-        }
-    }
-}
-
-impl Iterator for Indexer {
-    type Item = usize;
-    fn next(&mut self) -> Option<Self::Item> {
-        let width = convert!(ex usize; self.rect.width());
-        if self.idx >= width {
-            self.offset += width;
-            if self.offset / width > convert!(ex usize; self.rect.height()) {
-                return None;
-            }
-            self.idx = convert!(ex usize; self.rect.x());
-        }
-
-        let index = self.offset + self.idx;
-        self.idx += 1;
-        Some(index)
-    }
-}
-
 pub struct Iter<'a, 'b> {
     slice: &'b RectSlice<'a>,
     idx: Indexer,
@@ -130,7 +122,7 @@ impl<'a, 'b> Iter<'a, 'b> {
     pub fn new(slice: &'b RectSlice<'a>) -> Self {
         Self {
             slice,
-            idx: Indexer::from_slice(slice.rect()).into_iter(),
+            idx: Indexer::from_slice(slice.rect(), slice.img.width()).into_iter(),
         }
     }
 }
@@ -151,7 +143,7 @@ pub struct IterMut<'a, 'b> {
 
 impl<'a, 'b> IterMut<'a, 'b> {
     pub fn new(slice: &'b mut RectSlice<'a>) -> Self {
-        let idx = Indexer::from_slice(slice.rect()).into_iter();
+        let idx = Indexer::from_slice(slice.rect(), slice.img.width()).into_iter();
         Self { slice, idx }
     }
 }
@@ -166,5 +158,65 @@ impl<'a, 'b> Iterator for IterMut<'a, 'b> {
                 .get_mut(idx)
                 .map(|px| unsafe { &mut *(px as *mut u32) })
         })
+    }
+}
+
+struct Indexer {
+    rect: Rect,
+    offset: usize,
+    idx: u32,
+    img_width: u32,
+}
+
+impl Indexer {
+    pub fn from_slice(rect: &Rect, img_width: u32) -> Self {
+        let (ypos, width) = convert!(ex usize; rect.y(), img_width);
+        Self {
+            img_width,
+            offset: calc!(ypos * width),
+            rect: *rect,
+            idx: rect.x(),
+        }
+    }
+}
+
+impl Iterator for Indexer {
+    type Item = usize;
+
+    // if self.idx > self.x2 {
+    //     self.offset += self.width;
+    //     if self.offset / self.width > self.y2 {
+    //         return None;
+    //     }
+    //     self.idx = self.x;
+    // }
+
+    // let index = self.offset + self.idx;
+    // self.idx += 1;
+    // Some(index)
+    //None
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let (img_width, y2) = convert!(ex usize; self.img_width, self.rect.y2());
+
+        // println!(
+        //     "OFFSET: {} -- IDX {}; x={}; x2={}",
+        //     self.offset,
+        //     self.idx,
+        //     self.rect.x(),
+        //     self.rect.x2()
+        // );
+        if self.idx >= self.rect.x2() {
+            self.offset += img_width;
+            // println!("ImgWidth: {}; x2: {}", img_width, x2);
+            if self.offset / img_width >= y2 {
+                return None;
+            }
+            self.idx = self.rect.x();
+        }
+
+        let index = self.offset + convert!(ex usize; self.idx);
+        self.idx += 1;
+        Some(index)
     }
 }

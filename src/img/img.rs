@@ -74,11 +74,13 @@ impl Img {
         &mut self,
         xx2: impl RangeBounds<u32>,
         yy2: impl RangeBounds<u32>,
-    ) -> PngRes<RectSlice<'_>> {
-        Ok(RectSlice::new(
+    ) -> RectSlice<'_> {
+        let rs = RectSlice::new(
             self,
             Rect::from_range(xx2, yy2).constrain(self.width(), self.height()),
-        ))
+        );
+        println!("Width: {}; Height: {};", rs.width(), rs.height());
+        rs
     }
 
     fn from_parts(width: u32, height: u32, data: Vec<u32>, filter: Vec<u8>) -> PngRes<Img> {
@@ -120,34 +122,4 @@ impl Img {
             vec![0; height],
         )
     }
-
-    // pub fn copy(
-    //     &mut self,
-    //     (xx2, yy2): (impl RangeBounds<usize>, impl RangeBounds<usize>),
-    //     (xto, yto): (u32, u32),
-    // ) {
-    //     self.copy_filter((xx2, yy2), (xto, yto), |x| *x);
-    //     //let slice = self.slice(xx2, yy2).fill(0);
-    // }
-
-    // pub fn copy_filter(
-    //     &mut self,
-    //     (xx2, yy2): (impl RangeBounds<usize>, impl RangeBounds<usize>),
-    //     (xto, yto): (u32, u32),
-    //     filter: impl Fn(&u32) -> u32,
-    // ) {
-    //     let (wmax, hmax) = (
-    //         u32::saturating_sub(self.width(), xto),
-    //         u32::saturating_sub(self.height(), yto),
-    //     );
-
-    //     let mut from_slice = self.slice(xx2, yy2);
-    //     from_slice.clamp(wmax, hmax);
-    //     let (width, height) = from_slice.dimensions();
-
-    //     let data = from_slice.iter().map(filter).collect();
-    //     let mut to = self.slice(xto..xto + width, yto..yto + height);
-
-    //     to.copy_from_vec(data);
-    // }
 }

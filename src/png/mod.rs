@@ -1,6 +1,7 @@
 mod chunk;
 mod chunk_type;
 mod png;
+mod zlib;
 
 use crate::err::*;
 

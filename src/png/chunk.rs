@@ -135,7 +135,7 @@ impl TryFrom<&[u8]> for Chunk {
 
         PngErr::is_or(data.len() == length as usize, PngErr::LengthMismatch)?;
         PngErr::is_or(
-            crc::crc32::checksum_ieee(&bytes[4..crc_offset]) != crc,
+            crc::crc32::checksum_ieee(&bytes[4..crc_offset]) == crc,
             PngErr::CRCMismatch,
         )?;
 

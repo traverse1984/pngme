@@ -58,9 +58,5 @@ fn exec(command: PngME) -> PngRes {
 }
 
 fn main() -> PngRes {
-    let hi = 3;
-    let lo = 4;
-
-    Ok(())
-    //exec(PngME::cmd())
+    exec(PngME::cmd())
 }
