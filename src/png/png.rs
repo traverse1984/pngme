@@ -1,6 +1,14 @@
-use super::chunk::{Chunk, ChunkIter};
-use crate::err::*;
-use std::fmt;
+use super::{
+    chunk::{Chunk, ChunkIter},
+    fs,
+};
+use crate::{err::*, img::Img, Quad};
+use std::{
+    fmt,
+    io::{Read, Write},
+};
+
+use flate2::{read::ZlibDecoder, write::ZlibEncoder, Compression};
 
 #[derive(Debug)]
 pub struct Png {
@@ -9,6 +17,15 @@ pub struct Png {
 
 impl Png {
     const STANDARD_HEADER: [u8; 8] = [137, 80, 78, 71, 13, 10, 26, 10];
+    const CHUNK_SIZE: usize = 16384;
+
+    pub fn load(filename: &str) -> PngRes<Self> {
+        fs::read_png(filename)
+    }
+
+    pub fn save(&self, filename: &str) -> PngRes {
+        fs::write_png(filename, &self)
+    }
 
     pub fn from_chunks(chunks: Vec<Chunk>) -> Self {
         Self { chunks }
@@ -56,7 +73,7 @@ impl Png {
 
 impl TryFrom<&[u8]> for Png {
     type Error = PngErr;
-    fn try_from(bytes: &[u8]) -> Result<Self, Self::Error> {
+    fn try_from(bytes: &[u8]) -> PngRes<Self> {
         if bytes.len() < 8 || &bytes[0..8] != &Self::STANDARD_HEADER {
             return Err(PngErr::InvalidHeader);
         }
@@ -64,6 +81,37 @@ impl TryFrom<&[u8]> for Png {
         Ok(Self {
             chunks: ChunkIter::new(&bytes[8..]).collect::<Result<_, _>>()?,
         })
+    }
+}
+
+impl TryFrom<Img> for Png {
+    type Error = PngErr;
+    fn try_from(img: Img) -> PngRes<Self> {
+        let mut chunks = vec![Chunk::IHDR(img.width(), img.height())?];
+
+        let mut compress =
+            ZlibEncoder::new(Vec::with_capacity(Self::CHUNK_SIZE), Compression::default());
+        compress.write_all(&[]).or(Err(PngErr::CompressError))?;
+
+        chunks.extend(
+            compress
+                .finish()
+                .or(Err(PngErr::CompressError))?
+                .chunks(Self::CHUNK_SIZE)
+                .map(|data| Chunk::IDAT(data))
+                .collect::<Result<Vec<Chunk>, PngErr>>()?
+                .into_iter(),
+        );
+
+        chunks.push(Chunk::IEND()?);
+        Ok(Png { chunks })
+    }
+}
+
+impl TryInto<Img> for Png {
+    type Error = PngErr;
+    fn try_into(self) -> PngRes<Img> {
+        Err(PngErr::CRCMismatch)
     }
 }
 

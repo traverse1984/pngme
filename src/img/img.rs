@@ -79,7 +79,6 @@ impl Img {
             self,
             Rect::from_range(xx2, yy2).constrain(self.width(), self.height()),
         );
-        println!("Width: {}; Height: {};", rs.width(), rs.height());
         rs
     }
 

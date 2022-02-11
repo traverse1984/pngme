@@ -34,6 +34,10 @@ pub enum PngErr {
     XOverflow,
     YOverflow,
     ZeroAreaRect,
+    EncodeError,
+    DecodeError,
+    CompressError,
+    DecompressError,
 }
 
 impl PngErr {

@@ -74,16 +74,6 @@ impl Rect {
         let (x2, y2) = (calc!(cx2 + dx).max(0), calc!(cy2 + dy).max(0));
         let (x, y, x2, y2) = convert!(ex u32; x, y, x2, y2);
 
-        // println!(
-        //     "cx={}, cy={}, cx2={}, cy2={}, nx={}, ny={}",
-        //     cx, cy, cx2, cy2, nx, ny
-        // );
-
-        // println!(
-        //     "dx={}, dy={}, x={}, y={}, x2={}, y2={}",
-        //     dx, dy, x, y, x2, y2
-        // );
-
         Rect::new((x, y), (x2, y2))
     }
 

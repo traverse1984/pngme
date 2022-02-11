@@ -1,6 +1,7 @@
 use crate::img::{self, Img};
 use crate::{Image, Quad};
 use rand::Rng;
+use std::error::Error;
 use std::fs;
 use std::io::{ErrorKind, Read, Write};
 use std::str::FromStr;
@@ -9,7 +10,8 @@ use crate::{col, Color};
 
 use crate::err::*;
 use crate::png::{Chunk, ChunkType, Png};
-use flate2::{Decompress, FlushDecompress};
+use flate2::read::{ZlibDecoder, ZlibEncoder};
+use flate2::{Decompress, FlushDecompress, Status};
 
 fn read_png(filename: &str) -> PngRes<Png> {
     match fs::read(filename) {
@@ -96,12 +98,11 @@ pub fn scrub(filename: &str) -> PngRes {
         }
     }
 
-    let mut vect = Vec::with_capacity(buf.len() * 10);
-    let mut decoder = Decompress::new(true);
+    let mut output = Vec::new();
+    let mut decoder = ZlibDecoder::new(buf.as_slice());
+    let output = decoder.read_to_end(&mut output);
 
-    decoder
-        .decompress_vec(&buf, &mut vect, FlushDecompress::Finish)
-        .unwrap();
+    println!("Len: {}", output.unwrap());
 
     println!("Decoded!");
 
@@ -110,23 +111,18 @@ pub fn scrub(filename: &str) -> PngRes {
 
 pub fn test() -> PngRes {
     let mut rect = Img::new_bg(1250, 1250, col!(0x000000));
-    let mut slice = rect.slice(0..=10, 0..=10);
+    let mut slice = rect.slice(0..=5, 0..=5);
 
-    let colr = Box::into_raw(Box::new(0x000000u32));
+    let mut colr = 0x000000u32;
 
     for w in 0..5 {
         for x in 0..5 {
-            for y in 0..25 {
-                for z in 0..25 {
+            for y in 0..50 {
+                for z in 0..50 {
+                    let colr = col!(((1 + x) * (1 + w)) * 10, (y + 1) * 5, (z + 1) * 5);
                     slice
-                        .pos(
-                            x as u32 * 250 + z as u32 * 10,
-                            w as u32 * 250 + y as u32 * 10,
-                        )
-                        .fill(unsafe {
-                            *colr = col!(((1 + x) * (1 + w)) * 10, (y + 1) * 10, (z + 1) * 10);
-                            *colr
-                        });
+                        .pos(x as u32 * 250 + z as u32 * 5, w as u32 * 250 + y as u32 * 5)
+                        .fill(colr);
                 }
             }
         }

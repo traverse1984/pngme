@@ -58,5 +58,9 @@ fn exec(command: PngME) -> PngRes {
 }
 
 fn main() -> PngRes {
-    exec(PngME::cmd())
+    let mut items = Vec::new();
+    items.extend_from_slice(&[1, 2, 3, 4, 5, 6, 7, 8, 9]);
+
+    Ok(())
+    //exec(PngME::cmd())
 }

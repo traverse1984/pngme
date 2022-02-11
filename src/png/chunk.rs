@@ -4,9 +4,11 @@ use crate::INT_MAX;
 use crc::crc32;
 
 use std::fmt;
+use std::io::Read;
 use std::io::Write;
 use std::str::FromStr;
 
+use flate2::write::ZlibEncoder;
 use flate2::{Compress, Compression, FlushCompress};
 
 pub fn segment4(bytes: &[u8]) -> PngRes<[u8; 4]> {
@@ -27,7 +29,13 @@ impl Chunk {
     /// * Color Type: 6
     /// * Bit Depth: 16
     /// * Interlace: 0
+
+    #[deprecated]
     pub fn ihdr(width: u32, height: u32) -> PngRes<Self> {
+        Self::IHDR(width, height)
+    }
+
+    pub fn IHDR(width: u32, height: u32) -> PngRes<Self> {
         PngErr::not_or(width > INT_MAX as u32, PngErr::IHDRWidthOverflow)?;
         PngErr::not_or(height > INT_MAX as u32, PngErr::IHDRHeightOverflow)?;
 
@@ -43,21 +51,27 @@ impl Chunk {
         ))
     }
 
+    #[deprecated]
     pub fn iend() -> PngRes<Self> {
+        Self::IEND()
+    }
+
+    pub fn IEND() -> PngRes<Self> {
         Ok(Self::new(ChunkType::from_str("IEND")?, Vec::new()))
     }
 
+    #[deprecated]
     pub fn idat(data: &[u8]) -> PngRes<Self> {
-        let mut buf = Vec::with_capacity(data.len());
-        let mut encoder = Compress::new(Compression::default(), true);
+        Self::IDAT(data)
+    }
 
-        encoder
-            .compress_vec(&data, &mut buf, FlushCompress::Finish)
-            .unwrap();
+    pub fn IDAT(data: &[u8]) -> PngRes<Self> {
+        let mut compress = ZlibEncoder::new(Vec::new(), Compression::default());
+        compress.write_all(data).unwrap();
 
         Ok(Self::new(
             ChunkType::from_str("IDAT")?,
-            buf, //deflate::deflate_bytes_zlib(data.as_slice()),
+            compress.finish().unwrap(), //deflate::deflate_bytes_zlib(data.as_slice()),
         ))
     }
 

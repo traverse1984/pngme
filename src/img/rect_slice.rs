@@ -1,7 +1,6 @@
-use super::img::Img;
-use super::rect::Rect;
-use crate::{calc, convert, err::*, png, Image, Quad};
-use std::ops::{Bound, RangeBounds};
+use super::{img::Img, rect::Rect};
+use crate::{calc, convert, err::*, Image, Quad};
+use std::ops::RangeBounds;
 
 pub struct RectSlice<'a> {
     img: &'a mut Img,
@@ -26,14 +25,6 @@ impl Image for RectSlice<'_> {
     fn clone_to_vec(&self) -> Vec<u32> {
         self.iter().copied().collect()
     }
-
-    // fn clone_to_vec(&self) -> Vec<u32> {
-    //     Indexer::from_slice(self.rect(), self.img.width())
-    //         .into_iter()
-    //         .map(|idx| self.img.data().get(idx).unwrap())
-    //         .copied()
-    //         .collect()
-    // }
 }
 
 impl<'a> RectSlice<'a> {
@@ -199,16 +190,8 @@ impl Iterator for Indexer {
     fn next(&mut self) -> Option<Self::Item> {
         let (img_width, y2) = convert!(ex usize; self.img_width, self.rect.y2());
 
-        // println!(
-        //     "OFFSET: {} -- IDX {}; x={}; x2={}",
-        //     self.offset,
-        //     self.idx,
-        //     self.rect.x(),
-        //     self.rect.x2()
-        // );
         if self.idx >= self.rect.x2() {
             self.offset += img_width;
-            // println!("ImgWidth: {}; x2: {}", img_width, x2);
             if self.offset / img_width >= y2 {
                 return None;
             }
