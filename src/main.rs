@@ -57,6 +57,6 @@ fn exec(command: PngME) -> PngRes {
     })
 }
 
-fn main() -> PngRes {
-    exec(PngME::cmd())
+fn main() -> Result<(), String> {
+    exec(PngME::cmd()).map_err(|err| err.to_string())
 }

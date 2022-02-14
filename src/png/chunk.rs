@@ -3,7 +3,7 @@ use crate::{err::*, INT_MAX};
 use std::{fmt, str::FromStr};
 
 pub fn segment4(bytes: &[u8]) -> PngRes<[u8; 4]> {
-    bytes.try_into().map_err(|_| PngErr::ShortSegment)
+    bytes.try_into().map_err(|_| PngErr::InvalidSegment)
 }
 
 #[derive(Debug, Clone)]
@@ -39,7 +39,7 @@ impl Chunk {
                 u32::from_be_bytes(segment4(&header[4..8])?),
             ))
         } else {
-            Err(PngErr::InvalidHeader)
+            Err(PngErr::InvalidIHDR)
         }
     }
 

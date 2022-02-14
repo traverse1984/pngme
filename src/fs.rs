@@ -8,8 +8,8 @@ use std::{
 pub fn compress(data: &[u8]) -> PngRes<Vec<u8>> {
     let mut compress = ZlibEncoder::new(Vec::new(), Compression::default());
 
-    compress.write_all(data).or(Err(PngErr::EncodeError))?;
-    compress.finish().or(Err(PngErr::EncodeError))
+    compress.write_all(data).or(Err(PngErr::CompressError))?;
+    compress.finish().or(Err(PngErr::CompressError))
 }
 
 pub fn decompress(data: &[u8]) -> PngRes<Vec<u8>> {
@@ -17,7 +17,7 @@ pub fn decompress(data: &[u8]) -> PngRes<Vec<u8>> {
     let mut output = Vec::with_capacity(data.len());
     decompress
         .read_to_end(&mut output)
-        .map_or(Err(PngErr::DecodeError), |_| Ok(output))
+        .map_or(Err(PngErr::DecompressError), |_| Ok(output))
 }
 
 pub fn read(filename: &str) -> PngRes<Vec<u8>> {
