@@ -2,12 +2,14 @@ use super::{rect::Rect, rect_slice::RectSlice};
 use crate::{
     area, calc, convert,
     err::{PngErr::*, *},
-    png::{self, Chunk},
-    Color, Image, Quad,
+    fs,
+    png::{self, Chunk, Png},
+    Image, Quad,
 };
 
 use std::ops::RangeBounds;
 
+#[derive(Debug, Clone)]
 pub struct Img {
     width: u32,
     height: u32,
@@ -120,5 +122,61 @@ impl Img {
             data.into_iter().flatten().collect(),
             vec![0; height],
         )
+    }
+
+    pub fn reset_filter(&mut self) {
+        self.filter = vec![0; convert!(ex usize; self.height)];
+    }
+}
+
+impl TryFrom<Png> for Img {
+    type Error = PngErr;
+    fn try_from(png: Png) -> PngRes<Img> {
+        let header = png.chunk_by_type("IHDR").ok_or(PngErr::InvalidHeader)?;
+        let (width, height) = Chunk::ihdr_to_dimensions(&header)?;
+
+        // std::mem::transmute...
+
+        let chunk_size = convert!(usize; width)?
+            .checked_mul(4)
+            .ok_or(PngErr::IntOverflow)?
+            .checked_add(1)
+            .ok_or(PngErr::IntOverflow)?;
+
+        let data = fs::decompress(
+            png.chunks()
+                .into_iter()
+                .filter(|&chunk| chunk.chunk_type().to_string() == "IDAT")
+                .map(|chunk| chunk.data())
+                .flatten()
+                .copied()
+                .collect::<Vec<u8>>()
+                .as_slice(),
+        )?;
+
+        let scans = data
+            .len()
+            .checked_div(chunk_size)
+            .ok_or(PngErr::DataLengthMismatch)?;
+
+        let uheight = convert!(usize; height)?;
+        if scans != uheight {
+            return Err(PngErr::DataLengthMismatch);
+        }
+
+        let mut filter = Vec::with_capacity(uheight);
+        let data: Vec<u32> = data
+            .chunks(chunk_size)
+            .enumerate()
+            .map(|(i, scan)| {
+                filter.push(scan[0]);
+                (&scan[1..])
+                    .chunks(4)
+                    .map(|px| u32::from_be_bytes(png::segment4(px).unwrap()))
+            })
+            .flatten()
+            .collect();
+
+        Self::from_parts(width, height, data, filter)
     }
 }

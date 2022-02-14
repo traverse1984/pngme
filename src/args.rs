@@ -27,7 +27,7 @@ pub enum PngME {
     Scrub {
         file: String,
     },
-    Test,
+    Generate,
 }
 
 impl PngME {

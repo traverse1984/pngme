@@ -1,21 +1,12 @@
 use super::chunk_type::ChunkType;
-use crate::err::*;
-use crate::INT_MAX;
-use crc::crc32;
-
-use std::fmt;
-use std::io::Read;
-use std::io::Write;
-use std::str::FromStr;
-
-use flate2::write::ZlibEncoder;
-use flate2::{Compress, Compression, FlushCompress};
+use crate::{err::*, INT_MAX};
+use std::{fmt, str::FromStr};
 
 pub fn segment4(bytes: &[u8]) -> PngRes<[u8; 4]> {
     bytes.try_into().map_err(|_| PngErr::ShortSegment)
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Chunk {
     length: u32,
     chunk_type: ChunkType,
@@ -24,18 +15,7 @@ pub struct Chunk {
 }
 
 impl Chunk {
-    /// Basic implementation of IHDR chunk.
-    ///
-    /// * Color Type: 6
-    /// * Bit Depth: 16
-    /// * Interlace: 0
-
-    #[deprecated]
     pub fn ihdr(width: u32, height: u32) -> PngRes<Self> {
-        Self::IHDR(width, height)
-    }
-
-    pub fn IHDR(width: u32, height: u32) -> PngRes<Self> {
         PngErr::not_or(width > INT_MAX as u32, PngErr::IHDRWidthOverflow)?;
         PngErr::not_or(height > INT_MAX as u32, PngErr::IHDRHeightOverflow)?;
 
@@ -51,28 +31,24 @@ impl Chunk {
         ))
     }
 
-    #[deprecated]
-    pub fn iend() -> PngRes<Self> {
-        Self::IEND()
+    pub fn ihdr_to_dimensions(chunk: &Chunk) -> PngRes<(u32, u32)> {
+        let header = chunk.data();
+        if header.len() == 13 {
+            Ok((
+                u32::from_be_bytes(segment4(&header[0..4])?),
+                u32::from_be_bytes(segment4(&header[4..8])?),
+            ))
+        } else {
+            Err(PngErr::InvalidHeader)
+        }
     }
 
-    pub fn IEND() -> PngRes<Self> {
+    pub fn iend() -> PngRes<Self> {
         Ok(Self::new(ChunkType::from_str("IEND")?, Vec::new()))
     }
 
-    #[deprecated]
     pub fn idat(data: &[u8]) -> PngRes<Self> {
-        Self::IDAT(data)
-    }
-
-    pub fn IDAT(data: &[u8]) -> PngRes<Self> {
-        let mut compress = ZlibEncoder::new(Vec::new(), Compression::default());
-        compress.write_all(data).unwrap();
-
-        Ok(Self::new(
-            ChunkType::from_str("IDAT")?,
-            compress.finish().unwrap(), //deflate::deflate_bytes_zlib(data.as_slice()),
-        ))
+        Ok(Self::new(ChunkType::from_str("IDAT")?, data.to_vec()))
     }
 
     pub fn new(chunk_type: ChunkType, data: Vec<u8>) -> Self {
@@ -127,11 +103,6 @@ impl Chunk {
             .chain(self.crc.to_be_bytes().iter())
             .copied()
             .collect()
-    }
-
-    pub fn checked_me_chunk(&self) -> PngRes {
-        self.chunk_type.checked_me_type()?;
-        Ok(())
     }
 }
 

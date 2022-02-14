@@ -1,9 +1,8 @@
 use super::chunk;
 use crate::err::*;
-use std::fmt;
-use std::str::FromStr;
+use std::{fmt, str::FromStr};
 
-#[derive(Eq, Debug)]
+#[derive(Eq, Debug, Copy, Clone)]
 pub struct ChunkType {
     bytes: [u8; 4],
 }

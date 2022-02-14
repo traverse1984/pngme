@@ -1,6 +1,9 @@
-use crate::err::*;
 use crate::Color;
 
+/// Perform calculations in a sequential manner
+///
+/// @example
+/// let x = calc!(1 + 2 * 3 + 1 * 5); // (((1+2)*3)+1)*5
 #[macro_export]
 macro_rules! calc {
     (@call $fn: ident; $a: expr; $b: expr) => {{

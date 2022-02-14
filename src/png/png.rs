@@ -1,16 +1,11 @@
 use super::{
     chunk::{Chunk, ChunkIter},
-    fs,
+    ChunkType,
 };
-use crate::{err::*, img::Img, Quad};
-use std::{
-    fmt,
-    io::{Read, Write},
-};
+use crate::{err::*, fs, img::Img, Quad};
+use std::{fmt, str::FromStr};
 
-use flate2::{read::ZlibDecoder, write::ZlibEncoder, Compression};
-
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Png {
     chunks: Vec<Chunk>,
 }
@@ -19,12 +14,16 @@ impl Png {
     const STANDARD_HEADER: [u8; 8] = [137, 80, 78, 71, 13, 10, 26, 10];
     const CHUNK_SIZE: usize = 16384;
 
+    pub fn new() -> Self {
+        Self { chunks: Vec::new() }
+    }
+
     pub fn load(filename: &str) -> PngRes<Self> {
-        fs::read_png(filename)
+        Self::try_from(fs::read(filename)?.as_slice())
     }
 
     pub fn save(&self, filename: &str) -> PngRes {
-        fs::write_png(filename, &self)
+        fs::write(filename, self.as_bytes().as_slice())
     }
 
     pub fn from_chunks(chunks: Vec<Chunk>) -> Self {
@@ -66,8 +65,50 @@ impl Png {
             .collect()
     }
 
-    pub fn scrub(&mut self) {
+    pub fn scrub(&mut self) -> &mut Self {
         self.chunks.retain(|chunk| chunk.chunk_type().is_critical());
+        self
+    }
+
+    pub fn encode(&mut self, chunk_type: &str, message: &str) -> PngRes<&mut Self> {
+        ChunkType::from_str(chunk_type)?.checked_me_type()?;
+        self.encode_unchecked(chunk_type, message)
+    }
+
+    pub fn encode_unchecked(&mut self, chunk_type: &str, message: &str) -> PngRes<&mut Self> {
+        let chunk = Chunk::new(
+            ChunkType::from_str(chunk_type)?,
+            message.as_bytes().to_vec(),
+        );
+
+        self.remove_chunk(chunk_type).ok();
+        self.append_chunk(chunk);
+        Ok(self)
+    }
+
+    pub fn discard(&mut self, chunk_type: &str) -> PngRes<&mut Self> {
+        ChunkType::from_str(chunk_type)?.checked_me_type()?;
+        self.discard_unchecked(chunk_type)
+    }
+
+    pub fn discard_unchecked(&mut self, chunk_type: &str) -> PngRes<&mut Self> {
+        self.remove_chunk(chunk_type)?;
+        Ok(self)
+    }
+
+    pub fn decode(&self, chunk_type: &str) -> PngRes<String> {
+        self.chunk_by_type(chunk_type).map_or_else(
+            || Err(PngErr::ChunkNotFound),
+            |chunk| chunk.data_as_string(),
+        )
+    }
+
+    pub fn to_img(self) -> PngRes<Img> {
+        self.try_into()
+    }
+
+    pub fn from_img(img: Img) -> PngRes<Self> {
+        img.try_into()
     }
 }
 
@@ -87,31 +128,18 @@ impl TryFrom<&[u8]> for Png {
 impl TryFrom<Img> for Png {
     type Error = PngErr;
     fn try_from(img: Img) -> PngRes<Self> {
-        let mut chunks = vec![Chunk::IHDR(img.width(), img.height())?];
-
-        let mut compress =
-            ZlibEncoder::new(Vec::with_capacity(Self::CHUNK_SIZE), Compression::default());
-        compress.write_all(&[]).or(Err(PngErr::CompressError))?;
+        let mut chunks = vec![Chunk::ihdr(img.width(), img.height())?];
 
         chunks.extend(
-            compress
-                .finish()
-                .or(Err(PngErr::CompressError))?
+            fs::compress(img.to_bytes().as_slice())?
                 .chunks(Self::CHUNK_SIZE)
-                .map(|data| Chunk::IDAT(data))
+                .map(|data| Chunk::idat(data))
                 .collect::<Result<Vec<Chunk>, PngErr>>()?
                 .into_iter(),
         );
 
-        chunks.push(Chunk::IEND()?);
-        Ok(Png { chunks })
-    }
-}
-
-impl TryInto<Img> for Png {
-    type Error = PngErr;
-    fn try_into(self) -> PngRes<Img> {
-        Err(PngErr::CRCMismatch)
+        chunks.push(Chunk::iend()?);
+        Ok(Self::from_chunks(chunks))
     }
 }
 
@@ -130,7 +158,6 @@ mod tests {
     use crate::png::chunk::Chunk;
     use crate::png::chunk_type::ChunkType;
     use std::convert::TryFrom;
-    use std::str::FromStr;
 
     fn testing_chunks() -> Vec<Chunk> {
         let mut chunks = Vec::new();

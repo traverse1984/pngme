@@ -1,9 +1,9 @@
 mod args;
 mod commands;
 mod err;
+mod fs;
 mod img;
 mod png;
-
 mod traits;
 
 #[macro_use]
@@ -53,14 +53,10 @@ fn exec(command: PngME) -> PngRes {
             println!("{}", content);
         }
         Scrub { file } => commands::scrub(&file)?,
-        Test => commands::test()?,
+        Generate => commands::generate()?,
     })
 }
 
 fn main() -> PngRes {
-    let mut items = Vec::new();
-    items.extend_from_slice(&[1, 2, 3, 4, 5, 6, 7, 8, 9]);
-
-    Ok(())
-    //exec(PngME::cmd())
+    exec(PngME::cmd())
 }

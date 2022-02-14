@@ -1,140 +1,105 @@
-use crate::img::{self, Img};
-use crate::{Image, Quad};
-use rand::Rng;
-use std::error::Error;
-use std::fs;
-use std::io::{ErrorKind, Read, Write};
-use std::str::FromStr;
-
-use crate::{col, Color};
-
-use crate::err::*;
-use crate::png::{Chunk, ChunkType, Png};
-use flate2::read::{ZlibDecoder, ZlibEncoder};
-use flate2::{Decompress, FlushDecompress, Status};
-
-fn read_png(filename: &str) -> PngRes<Png> {
-    match fs::read(filename) {
-        Ok(buf) => Png::try_from(buf.as_slice()),
-        Err(e) => Err(match e.kind() {
-            ErrorKind::NotFound => PngErr::FileNotFound,
-            _ => PngErr::FileNotRead,
-        }),
-    }
-}
-
-fn write_png(filename: &str, png: Png) -> PngRes {
-    fs::write(filename, png.as_bytes().as_slice()).map_err(|_| PngErr::FileNotWritten)
-}
-
-fn write_encode(filename: &str, chunk_type: &str, message: &str, checked: bool) -> PngRes {
-    let chunk = Chunk::new(
-        ChunkType::from_str(chunk_type)?,
-        message.as_bytes().to_vec(),
-    );
-
-    if checked {
-        chunk.checked_me_chunk()?;
-    }
-
-    let mut png = read_png(filename)?;
-
-    png.remove_chunk(chunk_type).ok();
-    png.append_chunk(chunk);
-
-    write_png(filename, png)
-}
-
-fn write_remove(filename: &str, chunk_type: &str, checked: bool) -> PngRes {
-    if checked {
-        ChunkType::from_str(chunk_type)?.checked_me_type()?;
-    }
-
-    let mut png = read_png(filename)?;
-    png.remove_chunk(chunk_type)?;
-    write_png(filename, png)
-}
+use crate::{
+    col, convert,
+    err::*,
+    img::Img,
+    png::{Chunk, Png},
+    Color, Quad,
+};
 
 pub fn encode(filename: &str, chunk_type: &str, message: &str) -> PngRes {
-    write_encode(filename, chunk_type, message, true)
+    Png::load(filename)?
+        .encode(chunk_type, message)?
+        .save(filename)
 }
 
 pub fn encode_unchecked(filename: &str, chunk_type: &str, message: &str) -> PngRes {
-    write_encode(filename, chunk_type, message, false)
+    Png::load(filename)?
+        .encode_unchecked(chunk_type, message)?
+        .save(filename)
 }
 
 pub fn decode(filename: &str, chunk_type: &str) -> PngRes<String> {
-    let png = read_png(filename)?;
-    png.chunk_by_type(chunk_type).map_or_else(
-        || Err(PngErr::ChunkNotFound),
-        |chunk| chunk.data_as_string(),
-    )
+    Png::load(filename)?.decode(chunk_type)
 }
 
 pub fn remove(filename: &str, chunk_type: &str) -> PngRes {
-    write_remove(filename, chunk_type, true)
+    Png::load(filename)?.discard(chunk_type)?.save(filename)
 }
 
 pub fn remove_unchecked(filename: &str, chunk_type: &str) -> PngRes {
-    write_remove(filename, chunk_type, false)
+    Png::load(filename)?
+        .discard_unchecked(chunk_type)?
+        .save(filename)
 }
 
 pub fn print(filename: &str) -> PngRes<String> {
-    Ok(read_png(filename)?.to_string())
+    let png = Png::load(filename)?;
+    let ihdr = match png.chunk_by_type("IHDR") {
+        Some(ihdr) => match Chunk::ihdr_to_dimensions(ihdr) {
+            Ok((width, height)) => format!("Image Dimensions: {}x{}", width, height),
+            Err(_) => String::from("Image contains invalid IHDR chunk!"),
+        },
+        None => String::from("Image does not contain IHDR chunk."),
+    };
+
+    Ok(format!("{}\n{}", png.to_string(), ihdr))
 }
 
 pub fn scrub(filename: &str) -> PngRes {
-    // let mut png = read_png(filename)?;
-    // png.scrub();
-    // write_png(filename, png)?;
-    // Ok(())
-
-    let png = read_png(filename)?;
-    let mut buf = Vec::new();
-
-    for chunk in png.chunks() {
-        if chunk.chunk_type().bytes() == "IDAT".as_bytes() {
-            buf.extend_from_slice(chunk.data());
-        }
-    }
-
-    let mut output = Vec::new();
-    let mut decoder = ZlibDecoder::new(buf.as_slice());
-    let output = decoder.read_to_end(&mut output);
-
-    println!("Len: {}", output.unwrap());
-
-    println!("Decoded!");
-
-    Ok(())
+    let mut png = Png::load(filename)?;
+    png.scrub();
+    png.save(filename)
 }
 
-pub fn test() -> PngRes {
-    let mut rect = Img::new_bg(1250, 1250, col!(0x000000));
-    let mut slice = rect.slice(0..=5, 0..=5);
+pub fn generate() -> PngRes {
+    let mut gradient = Img::new(600, 600);
 
-    let mut colr = 0x000000u32;
+    let mut slice = gradient.slice(0..=2, 0..=2);
+    for a in 0..6 {
+        for b in 0..6 {
+            for c in 0..50 {
+                for d in 0..50 {
+                    let color = col!(((1 + a) * (1 + b)) * 7, (c + 1) * 5, (d + 1) * 5);
+                    let (w, x, y, z) = convert!(ex u32; a, b,c, d);
 
-    for w in 0..5 {
-        for x in 0..5 {
-            for y in 0..50 {
-                for z in 0..50 {
-                    let colr = col!(((1 + x) * (1 + w)) * 10, (y + 1) * 5, (z + 1) * 5);
-                    slice
-                        .pos(x as u32 * 250 + z as u32 * 5, w as u32 * 250 + y as u32 * 5)
-                        .fill(colr);
+                    slice.pos(w * 100 + y * 2, x * 100 + z * 2).fill(color);
                 }
             }
         }
     }
 
-    let head = Chunk::ihdr(1250, 1250)?;
-    let data = Chunk::idat(rect.to_bytes().as_slice())?;
-    let end = Chunk::iend()?;
+    let mut gradient_png = Png::from_img(gradient)?;
 
-    let png = Png::from_chunks(vec![head, data, end]);
+    gradient_png
+        .encode("pgMe", "I'm the gradients image.")?
+        .encode_unchecked("RUST", "I'm not as critical as I appear...")?
+        .save("gradients.png")?;
 
-    write_png("test.png", png)?;
+    let mut squares = gradient_png.to_img()?;
+    let filter = |from: &u32, to: &u32| from ^ to | 0xFF;
 
-    Ok(())
+    let small = squares
+        .slice(..=250, ..=250)
+        .copy_each(0, 350, filter)
+        .pos(0, 350)
+        .copy_each(350, 350, filter)
+        .pos(350, 350)
+        .clone_to_img();
+
+    squares
+        .slice(.., ..)
+        .fill(col!(0xFFFFFF))
+        .xywh((50, 50), small.width(), small.height())
+        .copy_from(&small.data())
+        .copy(50, 300)
+        .copy(300, 50)
+        .copy(300, 300);
+
+    Png::from_img(squares)?
+        .encode("pgMe", "I'm the squares image.")?
+        .save("squares.png")?;
+
+    Png::from_img(small)?
+        .encode("pgMe", "I'm the small image.")?
+        .save("small.png")
 }

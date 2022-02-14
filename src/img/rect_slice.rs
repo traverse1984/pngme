@@ -2,6 +2,7 @@ use super::{img::Img, rect::Rect};
 use crate::{calc, convert, err::*, Image, Quad};
 use std::ops::RangeBounds;
 
+#[derive(Debug)]
 pub struct RectSlice<'a> {
     img: &'a mut Img,
     rect: Rect,
@@ -70,7 +71,7 @@ impl<'a> RectSlice<'a> {
         self
     }
 
-    pub fn copy_each(&mut self, x: u32, y: u32, filter: impl Fn(&u32) -> u32) -> &mut Self {
+    pub fn copy_each(&mut self, x: u32, y: u32, filter: impl Fn(&u32, &u32) -> u32) -> &mut Self {
         let from = self.rect;
         let to = self
             .rect
@@ -81,18 +82,22 @@ impl<'a> RectSlice<'a> {
             self.rect = self.rect.constrain(to.width(), to.height());
         }
 
-        let data: Vec<u32> = self.clone_to_vec().iter().map(|px| filter(px)).collect();
-        self.pos(x, y).copy_from(data.as_slice());
+        let from_data = self.clone_to_vec();
+        self.pos(x, y)
+            .iter_mut()
+            .zip(from_data)
+            .for_each(|(px, px_from)| *px = filter(&px_from, px));
+
         self.rect = from;
         self
     }
 
     pub fn copy(&mut self, x: u32, y: u32) -> &mut Self {
-        self.copy_each(x, y, |px| *px)
+        self.copy_each(x, y, |from, _| *from)
     }
 
-    pub fn to_img(self) -> Img {
-        Img::from_vec(self.rect.width(), self.rect.height(), self.to_vec())
+    pub fn clone_to_img(&self) -> Img {
+        Img::from_vec(self.rect.width(), self.rect.height(), self.clone_to_vec())
     }
 
     pub fn iter(&self) -> Iter<'a, '_> {
@@ -173,20 +178,6 @@ impl Indexer {
 
 impl Iterator for Indexer {
     type Item = usize;
-
-    // if self.idx > self.x2 {
-    //     self.offset += self.width;
-    //     if self.offset / self.width > self.y2 {
-    //         return None;
-    //     }
-    //     self.idx = self.x;
-    // }
-
-    // let index = self.offset + self.idx;
-    // self.idx += 1;
-    // Some(index)
-    //None
-
     fn next(&mut self) -> Option<Self::Item> {
         let (img_width, y2) = convert!(ex usize; self.img_width, self.rect.y2());
 
